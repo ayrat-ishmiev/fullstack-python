@@ -1,6 +1,7 @@
 import sys
 import os
 from PyQt6.QtWidgets import QDialog, QMessageBox, QFileDialog
+from PyQt6.QtCore import Qt
 from exceptions import FileImportError
 from PyQt6.uic import loadUi
 
@@ -8,12 +9,16 @@ from PyQt6.uic import loadUi
 class ImportNoteDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.has_unsaved_changes = False  # Флаг для отслеживания изменений
 
         try:
-            # Загружаем UI файл
-            ui_path = os.path.join(os.path.dirname(__file__), '..', 'ui', 'import_note_dialog.ui')
+            # Загружаем UI файл (ИСПРАВЛЕН ПУТЬ - убрано '..')
+            ui_path = os.path.join(os.path.dirname(__file__), 'ui', 'import_note_dialog.ui')
             if not os.path.exists(ui_path):
-                raise FileNotFoundError(f"UI файл не найден: {ui_path}")
+                # Попробуем альтернативный путь
+                ui_path = os.path.join('ui', 'import_note_dialog.ui')
+                if not os.path.exists(ui_path):
+                    raise FileNotFoundError(f"UI файл не найден: {ui_path}")
 
             loadUi(ui_path, self)
 
@@ -66,6 +71,7 @@ class ImportNoteDialog(QDialog):
                 self.label_2.setText(file_name)  # label_2 - это метка для имени файла
                 self.label_2.setStyleSheet("color: green; font-weight: bold;")
                 self.pushButton_Add.setEnabled(True)
+                self.has_unsaved_changes = True  # Файл выбран - есть изменения
 
         except FileNotFoundError as e:
             QMessageBox.warning(self, "Файл не найден", str(e))
@@ -91,7 +97,7 @@ class ImportNoteDialog(QDialog):
             file_extension = os.path.splitext(self.file_path)[1].lower()
             if file_extension not in allowed_extensions:
                 raise FileImportError(
-                    f"Неподдерживаемый формат файла: {file_extension}. Допустимые форматы: {", ".join(allowed_extensions)}")
+                    f"Неподдерживаемый формат файла: {file_extension}. Допустимые форматы: {', '.join(allowed_extensions)}")
 
             # Симуляция импорта файла
             self._simulate_file_import()
@@ -102,6 +108,7 @@ class ImportNoteDialog(QDialog):
                 "Успех",
                 f"Конспект из файла '{file_name}' успешно импортирован!"
             )
+            self.has_unsaved_changes = False  # Изменения сохранены
             self.accept()
 
         except FileNotFoundError as e:
@@ -128,12 +135,13 @@ class ImportNoteDialog(QDialog):
     def cancel(self):
         """Отмена импорта"""
         try:
-            if self.file_path:
+            if self.has_unsaved_changes:
                 reply = QMessageBox.question(
                     self,
                     "Подтверждение отмены",
-                    "Выбран файл будет потерян. Вы уверены, что хотите отменить?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    "У вас есть несохраненные изменения.\nВы уверены, что хотите отменить импорт файла?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     self.reject()
@@ -142,3 +150,42 @@ class ImportNoteDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка при отмене: {str(e)}")
             self.reject()
+
+    def keyPressEvent(self, event):
+        """Обработка нажатия клавиши Escape для диалога импорта файла"""
+        if event.key() == Qt.Key.Key_Escape:
+            self.handle_escape_press()
+        else:
+            super().keyPressEvent(event)
+
+    def handle_escape_press(self):
+        """Обработка нажатия клавиши Escape"""
+        if self.has_unsaved_changes:
+            reply = QMessageBox.question(
+                self,
+                'Несохраненные изменения',
+                'У вас есть несохраненные изменения.\nЗакрыть диалог без сохранения?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.reject()
+        else:
+            self.reject()
+
+    def closeEvent(self, event):
+        """Обработка закрытия окна через крестик"""
+        if self.has_unsaved_changes:
+            reply = QMessageBox.question(
+                self,
+                'Несохраненные изменения',
+                'У вас есть несохраненные изменения.\nЗакрыть диалог без сохранения?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()  # Закрыть окно
+            else:
+                event.ignore()  # Не закрывать окно
+        else:
+            event.accept()  # Закрыть окно
