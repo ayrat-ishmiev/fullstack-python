@@ -781,6 +781,48 @@ class MainWindow(QMainWindow):
         # Добавляем кнопку для просмотра всех конспектов
         self.add_all_notes_button()
 
+        # Устанавливаем фокус на виджет для получения событий клавиатуры
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def keyPressEvent(self, event):
+        """Обработка нажатия клавиш"""
+        if event.key() == Qt.Key.Key_Escape:
+            self.close_application()
+        else:
+            super().keyPressEvent(event)
+
+    def close_application(self):
+        """Закрытие приложения с подтверждением"""
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение выхода",
+            "Вы уверены, что хотите выйти из приложения?\n\nВсе несохраненные изменения будут потеряны.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.close()
+
+    def closeEvent(self, event):
+        """Обработка события закрытия окна (через крестик)"""
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение выхода",
+            "Вы уверены, что хотите выйти из приложения?\n\nВсе несохраненные изменения будут потеряны.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Закрываем все открытые окна предметов перед закрытием главного окна
+            for subject_name, notes_window in list(self.notes_windows.items()):
+                if notes_window and hasattr(notes_window, 'close'):
+                    notes_window.close()
+            event.accept()
+        else:
+            event.ignore()
+
     def add_all_notes_button(self):
         """Добавление кнопки для просмотра всех конспектов"""
         self.all_notes_button = QPushButton("📋 Все конспекты", self)
