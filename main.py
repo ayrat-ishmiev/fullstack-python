@@ -5,6 +5,7 @@ import os
 import json
 import re
 import csv
+import base64
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QDialog,
                              QListWidget, QListWidgetItem, QMessageBox, QFileDialog,
                              QMenu, QTableWidgetItem, QVBoxLayout, QLabel,
@@ -350,6 +351,82 @@ class ImportNoteDialogWindow(QDialog):
         self.dialog = ImportNoteDialogClass(parent)
         self.selected_file = ""
         self.note_content = ""
+        self.note_title = ""  # Новое поле для хранения заголовка
+
+    def recognize_image_text(self, image_path):
+        """Отправка изображения в Gemini для распознавания текста с форматированием Markdown"""
+        try:
+            # Читаем изображение как base64
+            with open(image_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+
+            # Определяем MIME тип по расширению файла
+            mime_type = "image/jpeg"  # по умолчанию
+            if image_path.lower().endswith('.png'):
+                mime_type = "image/png"
+            elif image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg'):
+                mime_type = "image/jpeg"
+            elif image_path.lower().endswith('.gif'):
+                mime_type = "image/gif"
+            elif image_path.lower().endswith('.bmp'):
+                mime_type = "image/bmp"
+            elif image_path.lower().endswith('.webp'):
+                mime_type = "image/webp"
+
+            response = client.chat.completions.create(
+                model="google/gemini-2.5-flash",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": """На картинке рукописный текст на русском языке. Распознай, что там написано. Исправляй ошибки распознавания.
+
+ТРЕБОВАНИЯ К ФОРМАТИРОВАНИЮ:
+1. Сначала определи заголовок конспекта - обычно это самая крупная или выделенная надпись в начале.
+2. Отформатируй текст в Markdown с такими элементами:
+   - Заголовок первого уровня для названия конспекта: # Заголовок
+   - Заголовки второго уровня для основных разделов: ## Раздел
+   - Заголовки третьего уровня для подразделов: ### Подраздел
+   - Используй **жирный текст** для ключевых терминов
+   - Используй *курсив* для важных определений
+   - Используй маркированные списки (-) для перечислений
+   - Используй нумерованные списки (1., 2., 3.) для шагов или последовательностей
+   - Используй `код` для формул или специальных терминов
+
+3. Разделяй текст на логические блоки с пустыми строками между ними.
+4. Сохрани всю смысловую структуру оригинала.
+5. В ответе должен быть только отформатированный текст в Markdown, ничего лишнего."""
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{base64_image}"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            )
+
+            recognized_text = response.choices[0].message.content.strip()
+
+            # Извлекаем заголовок из распознанного текста (первая строка с #)
+            lines = recognized_text.split('\n')
+            for line in lines:
+                if line.startswith('# '):
+                    # Убираем символы # и пробелы для получения чистого заголовка
+                    self.note_title = line.replace('# ', '').strip()
+                    break
+
+            return recognized_text
+
+        except Exception as e:
+            print(f"Ошибка распознавания изображения: {e}")
+            file_name = os.path.basename(image_path)
+            self.note_title = file_name
+            return f"# Ошибка при распознавании\n\nНе удалось распознать текст из изображения: {str(e)}"
 
     def exec(self):
         """Выполнение диалога с обработкой результата"""
@@ -358,17 +435,52 @@ class ImportNoteDialogWindow(QDialog):
             # Получаем данные из диалога
             self.selected_file = getattr(self.dialog, 'file_path', '')
             if self.selected_file:
-                # Чтение содержимого файла (для текстовых файлов)
+                # Определяем расширение файла
+                file_ext = os.path.splitext(self.selected_file)[1].lower()
+
+                # Список поддерживаемых изображений для распознавания
+                image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+
                 if self.selected_file.lower().endswith('.txt'):
+                    # Чтение текстового файла и сохранение как обычный текст
                     try:
                         with open(self.selected_file, 'r', encoding='utf-8') as f:
-                            self.note_content = f.read()
+                            content = f.read()
+
+                            # Проверяем, есть ли в тексте Markdown-заголовок
+                            lines = content.split('\n')
+                            for line in lines:
+                                if line.startswith('# '):
+                                    self.note_title = line.replace('# ', '').strip()
+                                    break
+                            else:
+                                # Если заголовка нет, используем первую строку или имя файла
+                                if lines and lines[0].strip():
+                                    self.note_title = lines[0].strip()[:50]  # Ограничиваем длину
+                                else:
+                                    self.note_title = self.get_note_name()
+
+                            self.note_content = content
                     except:
                         file_name = os.path.basename(self.selected_file)
-                        self.note_content = f"Содержимое файла: {file_name}"
-                else:
+                        self.note_title = file_name
+                        self.note_content = f"# {file_name}\n\nНе удалось прочитать содержимое файла."
+
+                elif file_ext in image_extensions:
+                    # Распознавание текста из изображения с форматированием Markdown
                     file_name = os.path.basename(self.selected_file)
-                    self.note_content = f"Файл: {file_name}"
+                    self.note_content = self.recognize_image_text(self.selected_file)
+
+                    # Если заголовок не был извлечен из текста, используем имя файла
+                    if not self.note_title:
+                        self.note_title = self.get_note_name()
+
+                else:
+                    # Для других типов файлов создаем простую текстовую заметку
+                    file_name = os.path.basename(self.selected_file)
+                    self.note_title = file_name
+                    self.note_content = f"# {file_name}\n\nФайл импортирован: {file_name}"
+
             return QDialog.DialogCode.Accepted
         return QDialog.DialogCode.Rejected
 
@@ -376,8 +488,14 @@ class ImportNoteDialogWindow(QDialog):
         return self.selected_file
 
     def get_note_name(self):
-        """Получение имени конспекта из имени файла"""
-        if self.selected_file:
+        """Получение имени конспекта из имени файла или распознанного заголовка"""
+        if self.note_title:
+            # Если есть распознанный заголовок, используем его
+            # Ограничиваем длину и убираем запрещенные символы для имени файла
+            clean_title = re.sub(r'[\\/*?:"<>|]', '', self.note_title)
+            return clean_title[:100]  # Ограничиваем длину
+        elif self.selected_file:
+            # Иначе используем имя файла без расширения
             return os.path.splitext(os.path.basename(self.selected_file))[0]
         return ""
 
@@ -661,18 +779,22 @@ class NotesListWindow(QWidget):
 
     def format_note_content(self, content):
         """Форматирование содержимого конспекта для отображения"""
-        if content.startswith("Файл:") or content.startswith("Содержимое файла:"):
+        # Используем функцию markdown_to_html из AskAIDialogWindow для конвертации Markdown
+        try:
+            # Создаем временный экземпляр для использования метода markdown_to_html
+            temp_dialog = AskAIDialogWindow("temp", "", None)
+            return temp_dialog.markdown_to_html(content)
+        except:
+            # Если произошла ошибка, отображаем как обычный текст
             return f"""
             <html>
             <body>
-            <p style="font-size: 14px; color: #666;">
+            <p style="font-size: 14px; color: #666; white-space: pre-wrap;">
             {content}
             </p>
             </body>
             </html>
             """
-        else:
-            return content
 
     def add_note(self):
         """Добавление нового конспекта"""
