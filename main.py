@@ -26,9 +26,12 @@ from add_subject_dialog import AddSubjectDialog as AddSubjectDialogClass
 from import_note_dialog import ImportNoteDialog as ImportNoteDialogClass
 from exceptions import SubjectValidationError, FileImportError
 
+# Ключ OpenRouter
+from openrouter_key import OPENROUTER_KEY
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key="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",
+    api_key=OPENROUTER_KEY,
 )
 
 
