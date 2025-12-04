@@ -591,16 +591,6 @@ class ImportNoteDialog(QDialog):
             final_content = self.prepare_final_content()
             self.file_content = final_content
 
-            # Сообщение об успехе
-            QMessageBox.information(
-                self,
-                "✅ Успешно!",
-                f"Файл успешно добавлен в конспекты!\n\n"
-                f"📁 <b>{os.path.basename(self.file_path)}</b>\n"
-                f"🔤 <i>{self.file_type}</i>\n\n"
-                f"✨ Теперь вы можете задавать вопросы нейросети по содержимому этого файла."
-            )
-
             self.has_unsaved_changes = False
             self.accept()
 
