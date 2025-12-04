@@ -1265,6 +1265,9 @@ class MainWindow(QMainWindow):
         self.data_manager = DataManager()
         self.notes_windows = {}  # Словарь для хранения открытых окон предметов
         self.search_progress_dialog = None  # Диалог прогресса для поиска
+        self._search_in_progress = False
+        self._last_search_time = QtCore.QTime.currentTime()
+        self._line_edit_signals_blocked = False
 
         # Установка текущей даты
         current_date = QDate.currentDate()
@@ -1299,7 +1302,7 @@ class MainWindow(QMainWindow):
         # Устанавливаем фокус на виджет для получения событий клавиатуры
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def smart_search(self):
+    def smart_search(self, from_key_press=False):
         """Умный поиск конспектов с использованием нейросети"""
         search_text = self.ui.lineEdit.text().strip()
 
@@ -1307,11 +1310,26 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Поиск", "Введите текст для поиска!")
             return
 
+        # Защита от повторного вызова (debounce)
+        current_time = QtCore.QTime.currentTime()
+        if hasattr(self, '_last_search_time') and not from_key_press:
+            time_diff = self._last_search_time.msecsTo(current_time)
+            if time_diff < 1000:  # Защита от быстрых повторных вызовов (1 секунда)
+                return
+
+        self._last_search_time = current_time
+
+        # Если поиск уже выполняется, не запускаем новый
+        if hasattr(self, '_search_in_progress') and self._search_in_progress:
+            return
+
+        self._search_in_progress = True
+
         # Показываем диалог прогресса
         self.show_search_progress(search_text)
 
-        # Запускаем поиск в отдельном потоке (упрощенная версия)
-        self.perform_smart_search(search_text)
+        # Используем QTimer для асинхронного выполнения поиска
+        QtCore.QTimer.singleShot(100, lambda: self.perform_smart_search(search_text))
 
     def show_search_progress(self, search_text):
         """Показ диалога прогресса поиска"""
@@ -1367,6 +1385,11 @@ class MainWindow(QMainWindow):
             self.search_progress_dialog = None
             QApplication.processEvents()
 
+        # Восстанавливаем обработку сигналов в поле поиска
+        if hasattr(self, '_line_edit_signals_blocked') and self._line_edit_signals_blocked:
+            self.ui.lineEdit.blockSignals(False)
+            self._line_edit_signals_blocked = False
+
     def perform_smart_search(self, search_text):
         """Выполнение умного поиска"""
         try:
@@ -1376,6 +1399,9 @@ class MainWindow(QMainWindow):
             # Закрываем диалог прогресса
             self.close_search_progress()
 
+            # Сбрасываем флаг выполнения поиска
+            self._search_in_progress = False
+
             # Показываем результаты
             if search_results:
                 self.show_search_results(search_text, search_results)
@@ -1383,29 +1409,65 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Результаты поиска",
                                         "По вашему запросу ничего не найдено.\n\nПопробуйте изменить формулировку запроса.")
 
+                # Восстанавливаем фокус на поле поиска после закрытия сообщения
+                QtCore.QTimer.singleShot(100, self.ui.lineEdit.setFocus)
+
         except Exception as e:
             # Закрываем диалог прогресса в случае ошибки
             self.close_search_progress()
 
+            # Сбрасываем флаг выполнения поиска
+            self._search_in_progress = False
+
             QMessageBox.warning(self, "Ошибка поиска",
                                 f"Произошла ошибка при выполнении поиска:\n\n{str(e)}\n\nПопробуйте еще раз.")
 
+            # Восстанавливаем фокус на поле поиска после ошибки
+            QtCore.QTimer.singleShot(100, self.ui.lineEdit.setFocus)
+
     def show_search_results(self, search_text, search_results):
         """Показ результатов поиска в отдельном окне"""
+        # Очищаем поле поиска перед показом результатов
+        # Это предотвращает случайное повторное нажатие Enter
+        self.ui.lineEdit.blockSignals(True)
+        self.ui.lineEdit.clear()
+        self.ui.lineEdit.blockSignals(False)
+
         # Создаем и показываем окно результатов
         results_window = SearchResultsWindow(search_text, search_results,
                                              self.data_manager, self, self)
+
+        # Подключаем сигнал закрытия окна результатов
+        results_window.finished.connect(self.on_search_results_closed)
+
         results_window.exec()
 
-    # ... [остальные методы класса MainWindow остаются без изменений] ...
+    def on_search_results_closed(self):
+        """Обработчик закрытия окна результатов поиска"""
+        # Устанавливаем фокус на главное окно, а не на поле поиска
+        self.activateWindow()
+        self.setFocus()
+
+        # Очищаем флаг поиска
+        if hasattr(self, '_search_in_progress'):
+            self._search_in_progress = False
+
+        # Очищаем поле поиска для предотвращения случайного повторного поиска
+        QtCore.QTimer.singleShot(50, self.ui.lineEdit.clear)
 
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
         if event.key() == Qt.Key.Key_Escape:
             self.close_application()
-        elif event.key() == Qt.Key.Key_Return and self.ui.lineEdit.hasFocus():
-            # Если нажат Enter в поле поиска, выполняем поиск
-            self.smart_search()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # Проверяем, находится ли фокус в поле поиска
+            if self.ui.lineEdit.hasFocus():
+                # Запускаем поиск с флагом, что он вызван из keyPressEvent
+                self.smart_search(from_key_press=True)
+                # Блокируем дальнейшую обработку Enter
+                event.accept()
+            else:
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
 
