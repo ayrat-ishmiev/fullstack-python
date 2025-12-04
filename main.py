@@ -9,8 +9,9 @@ import base64
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QDialog,
                              QListWidget, QListWidgetItem, QMessageBox, QFileDialog,
                              QMenu, QTableWidgetItem, QVBoxLayout, QLabel,
-                             QTextBrowser, QPushButton, QFrame, QHeaderView)
-from PyQt6.QtCore import QDate, Qt, QRect
+                             QTextBrowser, QPushButton, QFrame, QHeaderView,
+                             QProgressDialog)
+from PyQt6.QtCore import QDate, Qt, QRect, QTimer
 from PyQt6 import QtCore, QtGui
 from openai import OpenAI
 
@@ -352,10 +353,59 @@ class ImportNoteDialogWindow(QDialog):
         self.selected_file = ""
         self.note_content = ""
         self.note_title = ""  # Новое поле для хранения заголовка
+        self.parent_window = parent  # Сохраняем ссылку на родительское окно
+        self.progress_dialog = None  # Диалог прогресса
+
+    def show_progress_dialog(self, filename):
+        """Показ диалога прогресса с анимацией"""
+        self.progress_dialog = QProgressDialog(
+            f"Распознавание текста из изображения...\n{os.path.basename(filename)}",
+            None,  # Без кнопки отмены
+            0, 0,  # Неопределенное время выполнения
+            self.parent_window
+        )
+
+        # Настройка диалога
+        self.progress_dialog.setWindowTitle("Распознавание текста")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)  # Показываем сразу
+        self.progress_dialog.setCancelButton(None)  # Убираем кнопку отмены
+
+        # Устанавливаем индикатор в режим "занято"
+        self.progress_dialog.setRange(0, 0)
+
+        # Создаем таймер для анимации точек
+        self.animation_timer = QTimer()
+        self.animation_timer.timeout.connect(self.update_progress_text)
+        self.animation_timer.start(500)  # Обновляем каждые 500 мс
+
+        self.dot_count = 0
+        self.progress_dialog.show()
+        QApplication.processEvents()  # Обрабатываем события для отображения диалога
+
+    def update_progress_text(self):
+        """Обновление текста с анимацией точек"""
+        if self.progress_dialog:
+            self.dot_count = (self.dot_count + 1) % 4
+            dots = "." * self.dot_count
+            base_text = f"Распознавание текста из изображения{dots}\n{os.path.basename(self.selected_file) if self.selected_file else ''}"
+            self.progress_dialog.setLabelText(base_text)
+
+    def close_progress_dialog(self):
+        """Закрытие диалога прогресса"""
+        if self.progress_dialog:
+            if self.animation_timer:
+                self.animation_timer.stop()
+            self.progress_dialog.close()
+            self.progress_dialog = None
+            QApplication.processEvents()  # Обрабатываем события для обновления UI
 
     def recognize_image_text(self, image_path):
         """Отправка изображения в Gemini для распознавания текста с форматированием Markdown"""
         try:
+            # Показываем индикатор загрузки
+            self.show_progress_dialog(image_path)
+
             # Читаем изображение как base64
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -373,8 +423,13 @@ class ImportNoteDialogWindow(QDialog):
             elif image_path.lower().endswith('.webp'):
                 mime_type = "image/webp"
 
+            # Обновляем текст диалога
+            if self.progress_dialog:
+                self.progress_dialog.setLabelText(f"Отправка запроса к нейросети...\n{os.path.basename(image_path)}")
+                QApplication.processEvents()
+
             response = client.chat.completions.create(
-                model="google/gemini-2.5-flash",
+                model="google/gemini-2.0-flash-exp:free",
                 messages=[
                     {
                         "role": "user",
@@ -410,6 +465,10 @@ class ImportNoteDialogWindow(QDialog):
                 ]
             )
 
+            if self.progress_dialog:
+                self.progress_dialog.setLabelText(f"Обработка ответа нейросети...\n{os.path.basename(image_path)}")
+                QApplication.processEvents()
+
             recognized_text = response.choices[0].message.content.strip()
 
             # Извлекаем заголовок из распознанного текста (первая строка с #)
@@ -420,12 +479,19 @@ class ImportNoteDialogWindow(QDialog):
                     self.note_title = line.replace('# ', '').strip()
                     break
 
+            # Закрываем диалог прогресса
+            self.close_progress_dialog()
+
             return recognized_text
 
         except Exception as e:
             print(f"Ошибка распознавания изображения: {e}")
             file_name = os.path.basename(image_path)
             self.note_title = file_name
+
+            # Закрываем диалог прогресса в случае ошибки
+            self.close_progress_dialog()
+
             return f"# Ошибка при распознавании\n\nНе удалось распознать текст из изображения: {str(e)}"
 
     def exec(self):
