@@ -672,43 +672,41 @@ class ImportNoteDialogWindow(QDialog):
         self.dialog = ImportNoteDialogClass(parent)
         self.selected_file = ""
         self.note_content = ""
-        self.note_title = ""  # Новое поле для хранения заголовка
-        self.parent_window = parent  # Сохраняем ссылку на родительское окно
-        self.progress_dialog = None  # Диалог прогресса
+        self.note_title = ""
+        self.parent_window = parent
+        self.progress_dialog = None
+        self.animation_timer = None
+        self.dot_count = 0
 
-    def show_progress_dialog(self, filename):
+    def show_progress_dialog(self, filename, operation="Распознавание"):
         """Показ диалога прогресса с анимацией"""
         self.progress_dialog = QProgressDialog(
-            f"Распознавание текста из изображения...\n{os.path.basename(filename)}",
-            None,  # Без кнопки отмены
-            0, 0,  # Неопределенное время выполнения
+            f"{operation}...\n{os.path.basename(filename)}",
+            None,
+            0, 0,
             self.parent_window
         )
 
-        # Настройка диалога
-        self.progress_dialog.setWindowTitle("Распознавание текста")
+        self.progress_dialog.setWindowTitle(operation)
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self.progress_dialog.setMinimumDuration(0)  # Показываем сразу
-        self.progress_dialog.setCancelButton(None)  # Убираем кнопку отмены
-
-        # Устанавливаем индикатор в режим "занято"
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setCancelButton(None)
         self.progress_dialog.setRange(0, 0)
 
-        # Создаем таймер для анимации точек
         self.animation_timer = QTimer()
-        self.animation_timer.timeout.connect(self.update_progress_text)
-        self.animation_timer.start(500)  # Обновляем каждые 500 мс
+        self.animation_timer.timeout.connect(lambda: self.update_progress_text(operation))
+        self.animation_timer.start(500)
 
         self.dot_count = 0
         self.progress_dialog.show()
-        QApplication.processEvents()  # Обрабатываем события для отображения диалога
+        QApplication.processEvents()
 
-    def update_progress_text(self):
+    def update_progress_text(self, operation):
         """Обновление текста с анимацией точек"""
         if self.progress_dialog:
             self.dot_count = (self.dot_count + 1) % 4
             dots = "." * self.dot_count
-            base_text = f"Распознавание текста из изображения{dots}\n{os.path.basename(self.selected_file) if self.selected_file else ''}"
+            base_text = f"{operation}{dots}\n{os.path.basename(self.selected_file) if self.selected_file else ''}"
             self.progress_dialog.setLabelText(base_text)
 
     def close_progress_dialog(self):
@@ -716,22 +714,195 @@ class ImportNoteDialogWindow(QDialog):
         if self.progress_dialog:
             if self.animation_timer:
                 self.animation_timer.stop()
+                self.animation_timer = None
             self.progress_dialog.close()
             self.progress_dialog = None
-            QApplication.processEvents()  # Обрабатываем события для обновления UI
+            QApplication.processEvents()
+
+    def get_audio_video_base64(self, file_path):
+        """Чтение аудио/видео файла и кодирование в base64"""
+        try:
+            with open(file_path, "rb") as media_file:
+                return base64.b64encode(media_file.read()).decode('utf-8')
+        except Exception as e:
+            print(f"Ошибка чтения файла: {e}")
+            return None
+
+    def transcribe_audio_video(self, media_path, media_type="audio"):
+        """Транскрибация аудио или видео файла через Gemini"""
+        try:
+            # Определяем тип операции
+            operation = "Расшифровка аудио" if media_type == "audio" else "Транскрибация видео"
+            self.show_progress_dialog(media_path, operation)
+
+            # Читаем файл как base64
+            base64_media = self.get_audio_video_base64(media_path)
+            if not base64_media:
+                self.close_progress_dialog()
+                return f"# Ошибка при чтении файла\n\nНе удалось прочитать {media_type} файл."
+
+            # Определяем MIME тип
+            file_ext = os.path.splitext(media_path)[1].lower()
+            mime_type = None
+
+            # Аудио форматы
+            audio_formats = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac'
+            }
+
+            # Видео форматы
+            video_formats = {
+                '.mp4': 'video/mp4',
+                '.avi': 'video/x-msvideo',
+                '.mov': 'video/quicktime',
+                '.mkv': 'video/x-matroska',
+                '.webm': 'video/webm',
+                '.flv': 'video/x-flv',
+                '.wmv': 'video/x-ms-wmv'
+            }
+
+            if file_ext in audio_formats:
+                mime_type = audio_formats[file_ext]
+                media_type = "audio"
+            elif file_ext in video_formats:
+                mime_type = video_formats[file_ext]
+                media_type = "video"
+            else:
+                self.close_progress_dialog()
+                return f"# Неподдерживаемый формат\n\nФормат файла {file_ext} не поддерживается для транскрибации."
+
+            # Обновляем текст диалога
+            if self.progress_dialog:
+                self.progress_dialog.setLabelText(
+                    f"Отправка {media_type} файла нейросети...\n{os.path.basename(media_path)}")
+                QApplication.processEvents()
+
+            # Формируем промпт в зависимости от типа медиа
+            if media_type == "audio":
+                prompt_text = """Перед тобой аудиозапись лекции или другого учебного материала на русском языке. 
+                Сделай транскрибацию аудио в текстовый конспект.
+
+                ТРЕБОВАНИЯ К ФОРМАТИРОВАНИЮ:
+                1. Сначала определи тему/заголовок лекции из контекста
+                2. Отформатируй текст в Markdown:
+                   - Заголовок первого уровня для названия: # Заголовок
+                   - Заголовки второго уровня для основных разделов: ## Раздел
+                   - Используй **жирный текст** для ключевых терминов
+                   - Используй *курсив* для важных определений
+                   - Используй маркированные списки (-) для перечислений
+                   - Используй нумерованные списки для шагов или последовательностей
+                   - Разделяй текст на логические блоки с пустыми строками
+
+                3. Сохрани всю смысловую структуру, включая:
+                   - Основные тезисы
+                   - Определения и термины
+                   - Примеры и пояснения
+                   - Выводы и заключения
+
+                4. Исправляй ошибки распознавания, но сохраняй смысл
+                5. В ответе должен быть только отформатированный текст в Markdown, ничего лишнего."""
+            else:  # video
+                prompt_text = """Перед тобой видео запись лекции или учебного материала на русском языке. 
+                Сделай транскрибацию аудиодорожки видео в текстовый конспект.
+
+                ТРЕБОВАНИЯ К ФОРМАТИРОВАНИЮ:
+                1. Сначала определи тему/заголовок видео из контекста
+                2. Отформатируй текст в Markdown:
+                   - Заголовок первого уровня для названия: # Заголовок
+                   - Заголовки второго уровня для основных разделов: ## Раздел
+                   - Используй **жирный текст** для ключевых терминов
+                   - Используй *курсив* для важных определений
+                   - Используй маркированные списки (-) для перечислений
+                   - Используй нумерованные списки для шагов или последовательностей
+                   - Разделяй текст на логические блоки с пустыми строками
+
+                3. Обрати внимание на:
+                   - Речь лектора/преподавателя
+                   - Основные концепции и идеи
+                   - Термины и определения
+                   - Примеры и пояснения
+                   - Заключительные мысли
+
+                4. Если есть названия слайдов или текста на экране, включи их в конспект
+                5. Исправляй ошибки распознавания, но сохраняй смысл
+                6. В ответе должен быть только отформатированный текст в Markdown, ничего лишнего."""
+
+            # Создаем запрос к Gemini
+            messages_content = [
+                {
+                    "type": "text",
+                    "text": prompt_text
+                },
+                {
+                    "type": media_type + "_url",
+                    media_type + "_url": {
+                        "url": f"data:{mime_type};base64,{base64_media}"
+                    }
+                }
+            ]
+
+            if self.progress_dialog:
+                self.progress_dialog.setLabelText(
+                    f"Идёт транскрибация...\n{os.path.basename(media_path)}")
+                QApplication.processEvents()
+
+            response = client.chat.completions.create(
+                model="google/gemini-2.5-flash",  # Используем Gemini 2.5 Flash
+                messages=[
+                    {
+                        "role": "user",
+                        "content": messages_content
+                    }
+                ],
+                max_tokens=4000  # Увеличиваем лимит токенов для длинных транскрипций
+            )
+
+            if self.progress_dialog:
+                self.progress_dialog.setLabelText(f"Получение результата...\n{os.path.basename(media_path)}")
+                QApplication.processEvents()
+
+            transcript = response.choices[0].message.content.strip()
+
+            # Извлекаем заголовок из транскрипции
+            lines = transcript.split('\n')
+            for line in lines:
+                if line.startswith('# '):
+                    self.note_title = line.replace('# ', '').strip()
+                    break
+
+            # Если заголовок не найден, используем имя файла
+            if not self.note_title:
+                file_name = os.path.splitext(os.path.basename(media_path))[0]
+                self.note_title = file_name
+                # Добавляем заголовок к транскрипции
+                transcript = f"# {file_name}\n\n" + transcript
+
+            self.close_progress_dialog()
+            return transcript
+
+        except Exception as e:
+            print(f"Ошибка транскрибации {media_type}: {e}")
+            file_name = os.path.basename(media_path)
+            self.note_title = os.path.splitext(file_name)[0]
+
+            self.close_progress_dialog()
+            return f"# {self.note_title}\n\nОшибка при транскрибации {media_type}: {str(e)}"
 
     def recognize_image_text(self, image_path):
         """Отправка изображения в Gemini для распознавания текста с форматированием Markdown"""
         try:
-            # Показываем индикатор загрузки
-            self.show_progress_dialog(image_path)
+            self.show_progress_dialog(image_path, "Распознавание текста из изображения")
 
-            # Читаем изображение как base64
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-            # Определяем MIME тип по расширению файла
-            mime_type = "image/jpeg"  # по умолчанию
+            # Определяем MIME тип
+            mime_type = "image/jpeg"
             if image_path.lower().endswith('.png'):
                 mime_type = "image/png"
             elif image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg'):
@@ -743,7 +914,6 @@ class ImportNoteDialogWindow(QDialog):
             elif image_path.lower().endswith('.webp'):
                 mime_type = "image/webp"
 
-            # Обновляем текст диалога
             if self.progress_dialog:
                 self.progress_dialog.setLabelText(f"Отправка запроса к нейросети...\n{os.path.basename(image_path)}")
                 QApplication.processEvents()
@@ -758,21 +928,21 @@ class ImportNoteDialogWindow(QDialog):
                                 "type": "text",
                                 "text": """На картинке рукописный текст на русском языке. Распознай, что там написано. Исправляй ошибки распознавания.
 
-ТРЕБОВАНИЯ К ФОРМАТИРОВАНИЮ:
-1. Сначала определи заголовок конспекта - обычно это самая крупная или выделенная надпись в начале.
-2. Отформатируй текст в Markdown с такими элементами:
-   - Заголовок первого уровня для названия конспекта: # Заголовок
-   - Заголовки второго уровня для основных разделов: ## Раздел
-   - Заголовки третьего уровня для подразделов: ### Подраздел
-   - Используй **жирный текст** для ключевых терминов
-   - Используй *курсив* для важных определений
-   - Используй маркированные списки (-) для перечислений
-   - Используй нумерованные списки (1., 2., 3.) для шагов или последовательностей
-   - Используй `код` для формул или специальных терминов
+                                ТРЕБОВАНИЯ К ФОРМАТИРОВАНИЮ:
+                                1. Сначала определи заголовок конспекта
+                                2. Отформатируй текст в Markdown:
+                                   - # Заголовок
+                                   - ## Раздел
+                                   - ### Подраздел
+                                   - **жирный текст** для ключевых терминов
+                                   - *курсив* для определений
+                                   - - маркированные списки
+                                   - 1. нумерованные списки
+                                   - `код` для формул
 
-3. Разделяй текст на логические блоки с пустыми строками между ними.
-4. Сохрани всю смысловую структуру оригинала.
-5. В ответе должен быть только отформатированный текст в Markdown, ничего лишнего."""
+                                3. Разделяй текст на логические блоки
+                                4. Сохрани смысловую структуру
+                                5. Только Markdown в ответе, ничего лишнего."""
                             },
                             {
                                 "type": "image_url",
@@ -791,81 +961,81 @@ class ImportNoteDialogWindow(QDialog):
 
             recognized_text = response.choices[0].message.content.strip()
 
-            # Извлекаем заголовок из распознанного текста (первая строка с #)
+            # Извлекаем заголовок
             lines = recognized_text.split('\n')
             for line in lines:
                 if line.startswith('# '):
-                    # Убираем символы # и пробелы для получения чистого заголовка
                     self.note_title = line.replace('# ', '').strip()
                     break
 
-            # Закрываем диалог прогресса
             self.close_progress_dialog()
-
             return recognized_text
 
         except Exception as e:
             print(f"Ошибка распознавания изображения: {e}")
             file_name = os.path.basename(image_path)
-            self.note_title = file_name
+            self.note_title = os.path.splitext(file_name)[0]
 
-            # Закрываем диалог прогресса в случае ошибки
             self.close_progress_dialog()
-
             return f"# Ошибка при распознавании\n\nНе удалось распознать текст из изображения: {str(e)}"
 
     def exec(self):
         """Выполнение диалога с обработкой результата"""
         result = self.dialog.exec()
         if result == QDialog.DialogCode.Accepted:
-            # Получаем данные из диалога
             self.selected_file = getattr(self.dialog, 'file_path', '')
             if self.selected_file:
-                # Определяем расширение файла
                 file_ext = os.path.splitext(self.selected_file)[1].lower()
 
-                # Список поддерживаемых изображений для распознавания
+                # Списки поддерживаемых форматов
                 image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+                audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.m4b']
+                video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv']
 
                 if self.selected_file.lower().endswith('.txt'):
-                    # Чтение текстового файла и сохранение как обычный текст
+                    # Текстовый файл
                     try:
                         with open(self.selected_file, 'r', encoding='utf-8') as f:
                             content = f.read()
-
-                            # Проверяем, есть ли в тексте Markdown-заголовок
                             lines = content.split('\n')
                             for line in lines:
                                 if line.startswith('# '):
                                     self.note_title = line.replace('# ', '').strip()
                                     break
                             else:
-                                # Если заголовка нет, используем первую строку или имя файла
                                 if lines and lines[0].strip():
-                                    self.note_title = lines[0].strip()[:50]  # Ограничиваем длину
+                                    self.note_title = lines[0].strip()[:50]
                                 else:
                                     self.note_title = self.get_note_name()
-
                             self.note_content = content
                     except:
                         file_name = os.path.basename(self.selected_file)
-                        self.note_title = file_name
-                        self.note_content = f"# {file_name}\n\nНе удалось прочитать содержимое файла."
+                        self.note_title = os.path.splitext(file_name)[0]
+                        self.note_content = f"# {self.note_title}\n\nНе удалось прочитать содержимое файла."
 
                 elif file_ext in image_extensions:
-                    # Распознавание текста из изображения с форматированием Markdown
-                    file_name = os.path.basename(self.selected_file)
+                    # Изображение - распознавание текста
                     self.note_content = self.recognize_image_text(self.selected_file)
+                    if not self.note_title:
+                        self.note_title = self.get_note_name()
 
-                    # Если заголовок не был извлечен из текста, используем имя файла
+                elif file_ext in audio_extensions:
+                    # Аудио файл - транскрибация
+                    self.note_content = self.transcribe_audio_video(self.selected_file, "audio")
+                    if not self.note_title:
+                        self.note_title = self.get_note_name()
+
+                elif file_ext in video_extensions:
+                    # Видео файл - транскрибация
+                    self.note_content = self.transcribe_audio_video(self.selected_file, "video")
                     if not self.note_title:
                         self.note_title = self.get_note_name()
 
                 else:
-                    # Для других типов файлов создаем простую текстовую заметку
+                    # Другие типы файлов
                     file_name = os.path.basename(self.selected_file)
-                    self.note_title = file_name
-                    self.note_content = f"# {file_name}\n\nФайл импортирован: {file_name}"
+                    self.note_title = os.path.splitext(file_name)[0]
+                    self.note_content = f"# {self.note_title}\n\nФайл импортирован: {file_name}"
 
             return QDialog.DialogCode.Accepted
         return QDialog.DialogCode.Rejected
@@ -874,14 +1044,11 @@ class ImportNoteDialogWindow(QDialog):
         return self.selected_file
 
     def get_note_name(self):
-        """Получение имени конспекта из имени файла или распознанного заголовка"""
+        """Получение имени конспекта"""
         if self.note_title:
-            # Если есть распознанный заголовок, используем его
-            # Ограничиваем длину и убираем запрещенные символы для имени файла
             clean_title = re.sub(r'[\\/*?:"<>|]', '', self.note_title)
-            return clean_title[:100]  # Ограничиваем длину
+            return clean_title[:100]
         elif self.selected_file:
-            # Иначе используем имя файла без расширения
             return os.path.splitext(os.path.basename(self.selected_file))[0]
         return ""
 
