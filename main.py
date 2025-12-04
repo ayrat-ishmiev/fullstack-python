@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QDialog,
                              QListWidget, QListWidgetItem, QMessageBox, QFileDialog,
                              QMenu, QTableWidgetItem, QVBoxLayout, QLabel,
                              QTextBrowser, QPushButton, QFrame, QHeaderView,
-                             QProgressDialog)
+                             QProgressDialog, QProgressBar)
 from PyQt6.QtCore import QDate, Qt, QRect, QTimer
 from PyQt6 import QtCore, QtGui
 from openai import OpenAI
@@ -22,6 +22,7 @@ from main_screen_ui import Ui_Form as MainScreen
 from notes_list_ui import Ui_Form as NotesList
 from ask_ai_dialog_ui import Ui_Form as AskAIDialog
 from all_notes_table_ui import Ui_Form as AllNotesTable
+from search_results_ui import Ui_SearchResultsDialog as SearchResultsDialog
 
 # Импорт обновленных классов
 from add_subject_dialog import AddSubjectDialog as AddSubjectDialogClass
@@ -35,6 +36,184 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_KEY,
 )
+
+
+class SearchResultsWindow(QDialog):
+    def __init__(self, search_query, search_results, data_manager, main_window, parent=None):
+        super().__init__(parent)
+        self.ui = SearchResultsDialog()
+        self.ui.setupUi(self)
+
+        self.search_query = search_query
+        self.search_results = search_results
+        self.data_manager = data_manager
+        self.main_window = main_window
+
+        # Настройка окна
+        self.setWindowTitle("Результаты умного поиска")
+        self.resize(900, 600)
+
+        # Отображение информации о запросе
+        self.ui.label_query.setText(f"Запрос: {search_query}")
+        self.ui.label_count.setText(f"Найдено конспектов: {len(search_results)}")
+
+        # Загрузка результатов в таблицу
+        self.load_search_results()
+
+        # Подключение сигналов
+        self.ui.pushButton_close.clicked.connect(self.close)
+        self.ui.pushButton_export.clicked.connect(self.export_results)
+        self.ui.tableWidget.cellDoubleClicked.connect(self.open_note)
+
+        # Настройка таблицы
+        self.ui.tableWidget.setSortingEnabled(True)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Добавляем контекстное меню для таблицы
+        self.ui.tableWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tableWidget.customContextMenuRequested.connect(self.show_context_menu)
+
+    def load_search_results(self):
+        """Загрузка результатов поиска в таблицу"""
+        self.ui.tableWidget.setRowCount(len(self.search_results))
+
+        for row, result in enumerate(self.search_results):
+            # Предмет
+            subject_item = QTableWidgetItem(result["subject"])
+            subject_item.setData(Qt.ItemDataRole.UserRole, result)  # Сохраняем полные данные
+            self.ui.tableWidget.setItem(row, 0, subject_item)
+
+            # Название конспекта
+            name_item = QTableWidgetItem(result["note_name"])
+            self.ui.tableWidget.setItem(row, 1, name_item)
+
+            # Дата добавления
+            date_item = QTableWidgetItem(result["created_date"])
+            self.ui.tableWidget.setItem(row, 2, date_item)
+
+            # Релевантность (в процентах)
+            relevance = result.get("relevance_score", 0)
+            relevance_item = QTableWidgetItem(f"{relevance:.1f}%")
+
+            # Настройка цвета в зависимости от релевантности
+            if relevance >= 80:
+                relevance_item.setForeground(QtGui.QBrush(QtGui.QColor(46, 204, 113)))  # Зеленый
+            elif relevance >= 60:
+                relevance_item.setForeground(QtGui.QBrush(QtGui.QColor(241, 196, 15)))  # Желтый
+            else:
+                relevance_item.setForeground(QtGui.QBrush(QtGui.QColor(231, 76, 60)))  # Красный
+
+            self.ui.tableWidget.setItem(row, 3, relevance_item)
+
+    def show_context_menu(self, position):
+        """Показ контекстного меню для таблицы результатов"""
+        item = self.ui.tableWidget.itemAt(position)
+        if item:
+            row = item.row()
+            result_data = self.ui.tableWidget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+
+            menu = QMenu(self)
+
+            # Добавляем пункты меню
+            open_action = menu.addAction("📖 Открыть конспект")
+            view_subject_action = menu.addAction("📚 Перейти к предмету")
+            copy_info_action = menu.addAction("📋 Копировать информацию")
+
+            action = menu.exec(self.ui.tableWidget.mapToGlobal(position))
+
+            if action == open_action:
+                self.open_selected_note(row)
+            elif action == view_subject_action:
+                self.view_subject(row)
+            elif action == copy_info_action:
+                self.copy_note_info(row)
+
+    def open_selected_note(self, row=None):
+        """Открытие выбранного конспекта"""
+        if row is None:
+            row = self.ui.tableWidget.currentRow()
+
+        if row >= 0:
+            self.open_note(row, 0)
+
+    def view_subject(self, row):
+        """Открытие окна предмета"""
+        if row >= 0:
+            result_data = self.ui.tableWidget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            subject_name = result_data["subject"]
+
+            # Закрываем окно результатов
+            self.close()
+
+            # Открываем окно предмета
+            self.main_window.open_subject_notes_by_name(subject_name)
+
+    def copy_note_info(self, row):
+        """Копирование информации о конспекте"""
+        if row >= 0:
+            result_data = self.ui.tableWidget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            subject = result_data["subject"]
+            note_name = result_data["note_name"]
+            date = result_data["created_date"]
+            relevance = result_data.get("relevance_score", 0)
+
+            text_to_copy = f"Предмет: {subject}\nКонспект: {note_name}\nДата: {date}\nРелевантность: {relevance:.1f}%"
+
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text_to_copy)
+
+            QMessageBox.information(self, "Скопировано", "Информация о конспекте скопирована в буфер обмена!")
+
+    def open_note(self, row, column):
+        """Открытие конспекта при двойном клике"""
+        result_data = self.ui.tableWidget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        subject = result_data["subject"]
+        note_name = result_data["note_name"]
+
+        # Закрываем окно результатов
+        self.close()
+
+        # Открываем конспект через главное окно
+        self.main_window.open_subject_with_note(subject, note_name)
+
+    def export_results(self):
+        """Экспорт результатов поиска в CSV файл"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Экспорт результатов поиска",
+            f"search_results_{self.search_query[:20]}.csv",
+            "CSV Files (*.csv)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                    fieldnames = ['subject', 'note_name', 'content_preview', 'created_date', 'relevance_score',
+                                  'search_query']
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
+
+                    writer.writeheader()
+                    for result in self.search_results:
+                        # Обрезаем контент для предпросмотра
+                        content_preview = result["content"][:200] + "..." if len(result["content"]) > 200 else result[
+                            "content"]
+
+                        writer.writerow({
+                            'subject': result["subject"],
+                            'note_name': result["note_name"],
+                            'content_preview': content_preview,
+                            'created_date': result["created_date"],
+                            'relevance_score': f"{result.get('relevance_score', 0):.1f}%",
+                            'search_query': self.search_query
+                        })
+
+                QMessageBox.information(self, "Экспорт завершен",
+                                        f"Результаты поиска успешно экспортированы в:\n{file_path}")
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка экспорта", f"Не удалось экспортировать результаты: {str(e)}")
 
 
 class DataManager:
@@ -132,6 +311,151 @@ class DataManager:
                 })
         return all_notes
 
+    def smart_search(self, query, ai_client=None):
+        """Умный поиск конспектов с использованием нейросети"""
+        all_notes = self.get_all_notes()
+
+        if not all_notes:
+            return []
+
+        if not query.strip():
+            # Если запрос пустой, возвращаем все конспекты
+            return [{
+                "subject": note["subject"],
+                "note_name": note["name"],
+                "content": note["content"],
+                "created_date": note["created_date"],
+                "relevance_score": 100  # Все конспекты релевантны при пустом запросе
+            } for note in all_notes]
+
+        # Если нет доступа к нейросети, используем простой текстовый поиск
+        if ai_client is None:
+            return self.simple_text_search(query)
+
+        try:
+            # Формируем промпт для нейросети
+            notes_text = ""
+            for i, note in enumerate(all_notes):
+                notes_text += f"--- Конспект {i + 1} ---\n"
+                notes_text += f"Предмет: {note['subject']}\n"
+                notes_text += f"Название: {note['name']}\n"
+                notes_text += f"Содержимое: {note['content'][:1000]}...\n\n"  # Ограничиваем длину
+
+            prompt = f"""Пользователь ищет конспекты по запросу: "{query}"
+
+Вот все доступные конспекты:
+{notes_text}
+
+Проанализируй релевантность каждого конспекта запросу пользователя и оцени от 0 до 100, где:
+- 100: идеально соответствует запросу
+- 80-99: очень релевантен
+- 60-79: умеренно релевантен  
+- 40-59: слабо релевантен
+- 0-39: не релевантен
+
+Верни ответ в формате JSON массива, где каждый элемент содержит:
+- "index": номер конспекта (начиная с 0)
+- "relevance_score": оценка релевантности (0-100)
+- "reason": краткое объяснение (1-2 предложения)
+
+Пример ответа:
+[
+  {{"index": 0, "relevance_score": 85, "reason": "Конспект содержит подробное объяснение баз данных, что соответствует запросу"}},
+  {{"index": 1, "relevance_score": 45, "reason": "Только кратко упоминает базы данных"}}
+]
+
+ВАЖНО: Верни ТОЛЬКО JSON массив, без дополнительного текста."""
+
+            response = ai_client.chat.completions.create(
+                model="google/gemini-2.5-flash-lite",  # Используем более легкую модель для поиска
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1  # Низкая температура для более детерминированных результатов
+            )
+
+            response_text = response.choices[0].message.content.strip()
+
+            # Извлекаем JSON из ответа
+            try:
+                # Попробуем найти JSON в ответе
+                json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+                if json_match:
+                    relevance_data = json.loads(json_match.group())
+                else:
+                    relevance_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Если не удалось распарсить JSON, используем простой поиск
+                print(f"Ошибка парсинга JSON от нейросети: {response_text}")
+                return self.simple_text_search(query)
+
+            # Формируем результаты с оценками релевантности
+            results = []
+            for item in relevance_data:
+                index = item.get("index", 0)
+                if 0 <= index < len(all_notes):
+                    note = all_notes[index]
+                    results.append({
+                        "subject": note["subject"],
+                        "note_name": note["name"],
+                        "content": note["content"],
+                        "created_date": note["created_date"],
+                        "relevance_score": item.get("relevance_score", 0),
+                        "reason": item.get("reason", "")
+                    })
+
+            # Сортируем по релевантности (по убыванию)
+            results.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+            # Фильтруем только достаточно релевантные результаты (более 30%)
+            filtered_results = [r for r in results if r["relevance_score"] >= 30]
+
+            return filtered_results
+
+        except Exception as e:
+            print(f"Ошибка при умном поиске: {e}")
+            # В случае ошибки используем простой текстовый поиск
+            return self.simple_text_search(query)
+
+    def simple_text_search(self, query):
+        """Простой текстовый поиск (используется как fallback)"""
+        all_notes = self.get_all_notes()
+        query_lower = query.lower()
+
+        results = []
+        for note in all_notes:
+            relevance = 0
+
+            # Проверяем совпадения в названии
+            if query_lower in note["name"].lower():
+                relevance += 40
+
+            # Проверяем совпадения в предмете
+            if query_lower in note["subject"].lower():
+                relevance += 30
+
+            # Проверяем совпадения в содержимом
+            if query_lower in note["content"].lower():
+                relevance += 20
+            else:
+                # Проверяем отдельные слова
+                query_words = query_lower.split()
+                content_lower = note["content"].lower()
+                for word in query_words:
+                    if len(word) > 2 and word in content_lower:
+                        relevance += 5
+
+            if relevance > 0:
+                results.append({
+                    "subject": note["subject"],
+                    "note_name": note["name"],
+                    "content": note["content"],
+                    "created_date": note["created_date"],
+                    "relevance_score": min(relevance, 100)
+                })
+
+        # Сортируем по релевантности
+        results.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return results
+
     def export_to_csv(self, filename=None):
         """Экспорт всех конспектов в CSV файл с правильной кодировкой"""
         if filename is None:
@@ -140,18 +464,17 @@ class DataManager:
         all_notes = self.get_all_notes()
 
         try:
-            with open(filename, 'w', newline='', encoding='utf-8-sig') as csvfile:  # Исправлена кодировка
+            with open(filename, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 fieldnames = ['subject', 'name', 'content', 'created_date']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')  # Используем разделитель ;
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
 
                 writer.writeheader()
                 for note in all_notes:
-                    # Очищаем данные от лишних пробелов
                     cleaned_note = {
                         'subject': note['subject'].strip(),
                         'name': note['name'].strip(),
                         'content': note['content'].strip()[:500] + '...' if len(note['content']) > 500 else note[
-                            'content'].strip(),  # Обрезаем длинный контент
+                            'content'].strip(),
                         'created_date': note['created_date'].strip()
                     }
                     writer.writerow(cleaned_note)
@@ -163,8 +486,8 @@ class DataManager:
     def import_from_csv(self, filename):
         """Импорт конспектов из CSV файла с правильной кодировкой"""
         try:
-            with open(filename, 'r', encoding='utf-8-sig') as csvfile:  # Исправлена кодировка
-                reader = csv.DictReader(csvfile, delimiter=';')  # Используем разделитель ;
+            with open(filename, 'r', encoding='utf-8-sig') as csvfile:
+                reader = csv.DictReader(csvfile, delimiter=';')
                 imported_count = 0
                 skipped_count = 0
 
@@ -175,17 +498,14 @@ class DataManager:
                         content = row.get('content', '').strip()
                         created_date = row.get('created_date', QDate.currentDate().toString("dd.MM.yyyy")).strip()
 
-                        # Проверяем обязательные поля
                         if not subject or not note_name:
                             skipped_count += 1
                             continue
 
-                        # Добавляем предмет, если его нет
                         if subject not in self.data["subjects"]:
                             self.data["subjects"].append(subject)
                             self.data["notes"][subject] = []
 
-                        # Проверяем, нет ли уже такого конспекта
                         note_exists = any(note["name"] == note_name for note in self.data["notes"][subject])
 
                         if not note_exists:
@@ -944,6 +1264,7 @@ class MainWindow(QMainWindow):
 
         self.data_manager = DataManager()
         self.notes_windows = {}  # Словарь для хранения открытых окон предметов
+        self.search_progress_dialog = None  # Диалог прогресса для поиска
 
         # Установка текущей даты
         current_date = QDate.currentDate()
@@ -958,9 +1279,12 @@ class MainWindow(QMainWindow):
         self.ui.pushButton.clicked.connect(self.add_note)
         self.ui.pushButton_2.clicked.connect(self.add_subject)
         self.ui.pushButton_3.clicked.connect(self.show_settings)
-        self.ui.pushButton_4.clicked.connect(self.search)
+        self.ui.pushButton_4.clicked.connect(self.smart_search)
         self.ui.listWidget.itemDoubleClicked.connect(self.open_subject_notes)
         self.ui.listWidget.itemClicked.connect(self.on_subject_selected)
+
+        # Добавляем обработку нажатия Enter в поле поиска
+        self.ui.lineEdit.returnPressed.connect(self.smart_search)
 
         # Включаем контекстное меню для списка предметов
         self.ui.listWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -975,10 +1299,113 @@ class MainWindow(QMainWindow):
         # Устанавливаем фокус на виджет для получения событий клавиатуры
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+    def smart_search(self):
+        """Умный поиск конспектов с использованием нейросети"""
+        search_text = self.ui.lineEdit.text().strip()
+
+        if not search_text:
+            QMessageBox.warning(self, "Поиск", "Введите текст для поиска!")
+            return
+
+        # Показываем диалог прогресса
+        self.show_search_progress(search_text)
+
+        # Запускаем поиск в отдельном потоке (упрощенная версия)
+        self.perform_smart_search(search_text)
+
+    def show_search_progress(self, search_text):
+        """Показ диалога прогресса поиска"""
+        self.search_progress_dialog = QProgressDialog(
+            f"Выполняется умный поиск по запросу:\n\"{search_text}\"",
+            "Отмена",
+            0, 0,
+            self
+        )
+
+        # Настройка диалога
+        self.search_progress_dialog.setWindowTitle("Умный поиск")
+        self.search_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.search_progress_dialog.setMinimumDuration(0)
+
+        # Устанавливаем индикатор в режим "занято"
+        self.search_progress_dialog.setRange(0, 0)
+
+        # Подключаем кнопку отмены
+        self.search_progress_dialog.canceled.connect(self.cancel_search)
+
+        # Создаем таймер для анимации
+        self.search_animation_timer = QTimer()
+        self.search_animation_timer.timeout.connect(self.update_search_progress_text)
+        self.search_animation_timer.start(500)
+
+        self.search_dot_count = 0
+        self.search_progress_dialog.show()
+        QApplication.processEvents()
+
+    def update_search_progress_text(self):
+        """Обновление текста с анимацией точек"""
+        if self.search_progress_dialog:
+            self.search_dot_count = (self.search_dot_count + 1) % 4
+            dots = "." * self.search_dot_count
+            base_text = self.search_progress_dialog.labelText().split('\n')[0]
+            self.search_progress_dialog.setLabelText(f"{base_text}{dots}")
+
+    def cancel_search(self):
+        """Отмена поиска"""
+        if self.search_progress_dialog:
+            if hasattr(self, 'search_animation_timer'):
+                self.search_animation_timer.stop()
+            self.search_progress_dialog.close()
+            self.search_progress_dialog = None
+
+    def close_search_progress(self):
+        """Закрытие диалога прогресса поиска"""
+        if self.search_progress_dialog:
+            if hasattr(self, 'search_animation_timer'):
+                self.search_animation_timer.stop()
+            self.search_progress_dialog.close()
+            self.search_progress_dialog = None
+            QApplication.processEvents()
+
+    def perform_smart_search(self, search_text):
+        """Выполнение умного поиска"""
+        try:
+            # Выполняем поиск через DataManager
+            search_results = self.data_manager.smart_search(search_text, client)
+
+            # Закрываем диалог прогресса
+            self.close_search_progress()
+
+            # Показываем результаты
+            if search_results:
+                self.show_search_results(search_text, search_results)
+            else:
+                QMessageBox.information(self, "Результаты поиска",
+                                        "По вашему запросу ничего не найдено.\n\nПопробуйте изменить формулировку запроса.")
+
+        except Exception as e:
+            # Закрываем диалог прогресса в случае ошибки
+            self.close_search_progress()
+
+            QMessageBox.warning(self, "Ошибка поиска",
+                                f"Произошла ошибка при выполнении поиска:\n\n{str(e)}\n\nПопробуйте еще раз.")
+
+    def show_search_results(self, search_text, search_results):
+        """Показ результатов поиска в отдельном окне"""
+        # Создаем и показываем окно результатов
+        results_window = SearchResultsWindow(search_text, search_results,
+                                             self.data_manager, self, self)
+        results_window.exec()
+
+    # ... [остальные методы класса MainWindow остаются без изменений] ...
+
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
         if event.key() == Qt.Key.Key_Escape:
             self.close_application()
+        elif event.key() == Qt.Key.Key_Return and self.ui.lineEdit.hasFocus():
+            # Если нажат Enter в поле поиска, выполняем поиск
+            self.smart_search()
         else:
             super().keyPressEvent(event)
 
@@ -1187,15 +1614,6 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         """Показ настроек"""
         QMessageBox.information(self, "Настройки", "Раздел настроек будет реализован позже!")
-
-    def search(self):
-        """Поиск конспектов"""
-        search_text = self.ui.lineEdit.text().strip()
-        if search_text:
-            QMessageBox.information(self, "Поиск",
-                                    f"Поиск по запросу: '{search_text}'\n\nФункция поиска будет полностью реализована в будущем!")
-        else:
-            QMessageBox.warning(self, "Поиск", "Введите текст для поиска!")
 
     def open_subject_notes(self, item):
         """Открытие списка конспектов для выбранного предмета как отдельного окна"""
