@@ -429,7 +429,7 @@ class ImportNoteDialogWindow(QDialog):
                 QApplication.processEvents()
 
             response = client.chat.completions.create(
-                model="google/gemini-2.0-flash-exp:free",
+                model="google/gemini-2.5-flash",
                 messages=[
                     {
                         "role": "user",
@@ -1035,25 +1035,27 @@ class MainWindow(QMainWindow):
         # Затем выбираем нужный конспект в открытом окне
         if subject_name in self.notes_windows:
             notes_window = self.notes_windows[subject_name]
-            notes_window.select_note_by_name(note_name)
-            # Активируем окно, чтобы оно было поверх других
-            notes_window.raise_()
-            notes_window.activateWindow()
+            # Проверяем, что окно существует и активно
+            if notes_window is not None and hasattr(notes_window, 'select_note_by_name'):
+                notes_window.select_note_by_name(note_name)
+                # Активируем окно, чтобы оно было поверх других
+                notes_window.raise_()
+                notes_window.activateWindow()
 
     def open_subject_notes_by_name(self, subject_name):
         """Открытие окна предмета по имени как отдельного окна"""
         # Проверяем, не открыто ли уже окно для этого предмета
         if subject_name in self.notes_windows:
-            # Если окно уже открыто, активируем его
             notes_window = self.notes_windows[subject_name]
-            # Проверяем, не было ли окно уничтожено
-            if notes_window and hasattr(notes_window, 'isVisible') and notes_window.isVisible():
+            # Проверяем, существует ли еще объект окна и видимо ли оно
+            if notes_window is not None and hasattr(notes_window, 'isVisible') and notes_window.isVisible():
                 notes_window.raise_()
                 notes_window.activateWindow()
                 return
             else:
-                # Если окно было закрыто, удаляем его из словаря
-                del self.notes_windows[subject_name]
+                # Если окно было закрыто или уничтожено, удаляем его из словаря
+                if subject_name in self.notes_windows:
+                    del self.notes_windows[subject_name]
 
         # Создаем новое окно как отдельное окно
         new_notes_window = NotesListWindow(subject_name, self.data_manager)
@@ -1073,9 +1075,12 @@ class MainWindow(QMainWindow):
 
     def on_notes_window_closed(self, subject_name):
         """Обработка закрытия окна предмета"""
+        # Полностью удаляем запись из словаря при закрытии окна
         if subject_name in self.notes_windows:
-            # Устанавливаем значение в None вместо удаления, чтобы избежать KeyError
-            self.notes_windows[subject_name] = None
+            # Проверяем, существует ли еще объект окна
+            notes_window = self.notes_windows[subject_name]
+            if notes_window is None or not hasattr(notes_window, 'isVisible') or not notes_window.isVisible():
+                del self.notes_windows[subject_name]
 
     def get_russian_day_of_week(self, day_number):
         """Получение русского названия дня недели"""
@@ -1130,12 +1135,13 @@ class MainWindow(QMainWindow):
                 self.ui.pushButton.setEnabled(False)
 
                 # Закрываем окно предмета, если оно было открыто
-                if subject_name in self.notes_windows and self.notes_windows[subject_name] is not None:
+                if subject_name in self.notes_windows:
                     notes_window = self.notes_windows[subject_name]
-                    if hasattr(notes_window, 'close'):
+                    if notes_window is not None and hasattr(notes_window, 'close'):
                         notes_window.close()
                     # Удаляем из словаря
-                    del self.notes_windows[subject_name]
+                    if subject_name in self.notes_windows:
+                        del self.notes_windows[subject_name]
 
                 QMessageBox.information(self, "Успех", f"Предмет '{subject_name}' успешно удален!")
             else:
