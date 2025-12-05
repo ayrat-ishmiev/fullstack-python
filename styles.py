@@ -2,7 +2,7 @@
 
 # Цвета
 COLOR_BG_DARK = "#181b21"
-COLOR_ACCENT = "#cbbbc4"            # Лаванда
+COLOR_ACCENT = "#e6e0ff"            # Яркая Лаванда
 COLOR_TEXT_MAIN = "#ffffff"         # Белый
 COLOR_TEXT_DARK = "#181b21"         # Темный (для текста на светлых кнопках)
 COLOR_TEXT_DIM = "#bccce0"          # Серо-голубой
@@ -24,7 +24,7 @@ QMainWindow {{
 
 /* === ГЛАВНОЕ ПРИВЕТСТВИЕ === */
 QLabel#welcome_label {{
-    font-size: 38px;  /* Уменьшила, чтобы влезало */
+    font-size: 38px;
     font-weight: 800;
     color: {COLOR_ACCENT};
     background: transparent;
@@ -50,33 +50,54 @@ QLabel#subject_title_label {{
     background-color: rgba(35, 30, 45, 0.6); 
 }}
 
-/* === ГЛАВНЫЕ ОКНА И ДИАЛОГИ (Исправляет черный фон в NotesListWindow и других) === */
+/* === ГЛАВНЫЕ ОКНА И ДИАЛОГИ === */
 QDialog, QWidget[windowTitle], QWidget[class="NotesListWindow"] {{ 
-    background-color: rgba(30, 30, 40, 0.9); /* Более плотный темный фон для окон */
+    background-color: rgba(30, 30, 40, 0.9);
     border: 1px solid {COLOR_BORDER_LIGHT}; 
     border-radius: 12px;
 }}
-/* === ОКНО "ВСЕ КОНСПЕКТЫ" (Прозрачный фон) === */
+/* === ОКНО "ВСЕ КОНСПЕКТЫ" (Темно-фиолетовый фон) === */
 QWidget[class="AllNotesTableWindow"] {{ 
-    background-color: transparent; /* Прозрачный фон для соответствия запросу */
-    border: 1px solid {COLOR_BORDER_LIGHT}; 
+    background-color: rgba(30, 30, 40, 0.9);
+    border: 1px solid {COLOR_ACCENT}; /* ЯРКАЯ ЛАВАНДОВАЯ ГРАНИЦА ВОКРУГ ОКНА */
     border-radius: 12px;
 }}
-/* === КОНТЕЙНЕРЫ (Списки, Таблицы, Текстовые поля внутри окон) === */
-QListWidget, QTableWidget, QTextBrowser {{ 
-    background-color: rgba(30, 30, 40, 0.6); /* Чуть темнее фон для читаемости */
+/* === КОНТЕЙНЕРЫ (Списки, Текстовые поля внутри окон) === */
+QListWidget, QTextBrowser {{ 
+    background-color: rgba(30, 30, 40, 0.6);
     border: 1px solid {COLOR_BORDER_LIGHT}; 
     border-radius: 12px;
     padding: 10px;
     outline: none;
 }}
 
+/* === ОБЩИЙ СТИЛЬ: ТАБЛИЦА (QTableWidget) === */
+QTableWidget {{
+    background-color: rgba(30, 30, 40, 0.6); 
+    border: 1px solid {COLOR_BORDER_LIGHT}; /* Общая граница осталась тусклой */
+    border-radius: 12px;
+    padding: 10px;
+    outline: none;
+}}
+
+
+/* === СПЕЦИФИЧЕСКИЙ СТИЛЬ: ТАБЛИЦА ВНУТРИ ОКНА "ВСЕ КОНСПЕКТЫ" === */
+/* ЭТОТ БЛОК ПЕРЕОПРЕДЕЛЯЕТ ОБЩИЙ СТИЛЬ И ЗАДАЕТ ЯРКУЮ ЛАВАНДОВУЮ ГРАНИЦУ */
+QWidget[class="AllNotesTableWindow"] QTableWidget {{
+    background-color: rgba(20, 20, 30, 0.9); 
+    border: 2px solid {COLOR_ACCENT}; /* ⬅️ ТОЛСТАЯ И ЯРКАЯ ЛАВАНДОВАЯ ЛИНИЯ */
+    border-radius: 12px; 
+    padding: 10px;
+    outline: none;
+}}
+
+
 /* === СПИСОК ПРЕДМЕТОВ === */
 QListWidget::item {{
     padding: 8px 12px;
     margin: 3px 0; 
     border-radius: 6px;
-    color: {COLOR_TEXT_MAIN}; /* БЕЛЫЙ ТЕКСТ */
+    color: {COLOR_TEXT_MAIN};
     background: transparent;
 }}
 
@@ -87,13 +108,13 @@ QListWidget::item:hover {{
 
 QListWidget::item:selected {{
     background-color: {COLOR_ACCENT};
-    color: {COLOR_TEXT_DARK}; /* Темный текст на выбранном */
+    color: {COLOR_TEXT_DARK};
     font-weight: bold;
 }}
 
 /* === КНОПКИ === */
 QPushButton {{
-    background-color: rgba(255, 255, 255, 0.1); /* Полупрозрачный фон */
+    background-color: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: {COLOR_TEXT_MAIN};
     border-radius: 6px; 
@@ -102,7 +123,7 @@ QPushButton {{
     font-weight: 600;
 }}
 
-/* ПРИ НАВЕДЕНИИ: Светлый фон, темный текст */
+/* ПРИ НАВЕДЕНИИ: Темный фон, тусклый текст */
 QPushButton:hover {{
     background-color: rgba(20, 20, 30, 0.9); 
     color: {COLOR_TEXT_DIM}; 
@@ -113,7 +134,7 @@ QPushButton:pressed {{
     background-color: rgba(200, 200, 200, 0.9);
 }}
 
-/* НЕАКТИВНАЯ КНОПКА (Disabled) - Тусклая */
+/* НЕАКТИВНАЯ КНОТКА (Disabled) - Тусклая */
 QPushButton:disabled {{
     background-color: rgba(50, 50, 50, 0.3);
     color: rgba(255, 255, 255, 0.2);
@@ -122,7 +143,7 @@ QPushButton:disabled {{
 
 /* === ПОЛЕ ПОИСКА / ПОЛЯ ВВОДА В ДИАЛОГАХ (темно-фиолетовый фон) === */
 QLineEdit {{
-    background-color: rgba(50, 40, 60, 0.7); /* Темно-фиолетовый */
+    background-color: rgba(50, 40, 60, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 8px;
     padding: 8px 12px;
@@ -132,10 +153,10 @@ QLineEdit {{
 
 QLineEdit:focus {{
     border: 1px solid {COLOR_ACCENT};
-    background-color: rgba(50, 40, 60, 0.9); /* Чуть темнее при фокусе */
+    background-color: rgba(50, 40, 60, 0.9);
 }}
 
-/* === ТАБЛИЦА === */
+/* === ТАБЛИЦА (QHeaderView::section) === */
 QHeaderView::section {{
     background-color: rgba(20, 20, 30, 0.9);
     color: {COLOR_ACCENT};
@@ -144,9 +165,9 @@ QHeaderView::section {{
     border-bottom: 1px solid {COLOR_ACCENT};
 }}
 
-/* === МЕНЮ КОНТЕКСТА (ВОССТАНОВЛЕНО) === */
+/* === МЕНЮ КОНТЕКСТА === */
 QMenu {{
-    background-color: rgba(30, 30, 40, 1.0); /* Сплошной темный фон */
+    background-color: rgba(30, 30, 40, 1.0);
     border: 1px solid {COLOR_BORDER_LIGHT};
     border-radius: 8px;
     padding: 5px;
@@ -172,14 +193,43 @@ QMenu::separator {{
 }}
 
 /* === СТИЛЬ ДЕЙСТВИЯ "УДАЛИТЬ ПРЕДМЕТ" (ПО ДИНАМИЧЕСКОМУ СВОЙСТВУ) === */
-/* Красный цвет текста для этого пункта */
 QMenu::item[delete_item="true"] {{
     color: #e74c3c; 
 }}
 
-/* Глубокий красный фон при выборе */
 QMenu::item[delete_item="true"]:selected {{
     background-color: #c0392b; 
     color: white; 
+}}
+
+/* === СТИЛЬ СТРОК ПРОКРУТКИ (SCROLLBARS) === */
+QScrollBar:vertical, QScrollBar:horizontal {{
+    border: none;
+    background: rgba(30, 30, 40, 0.9);
+    width: 10px;
+    height: 10px;
+    margin: 0px 0px 0px 0px; 
+    border-radius: 5px;
+}}
+
+/* СТИЛЬ ПОЛЗУНКА (HANDLE) - Лавандовый цвет */
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+    background: {COLOR_ACCENT};
+    min-height: 20px;
+    min-width: 20px;
+    border-radius: 5px; 
+}}
+
+/* Эффект при наведении на ползунок */
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
+    background: #dcd0d5;
+}}
+
+/* Убрать кнопки-стрелки с концов скроллбара */
+QScrollBar::add-line, QScrollBar::sub-line {{
+    border: none;
+    background: none;
+    width: 0px;
+    height: 0px;
 }}
 """
