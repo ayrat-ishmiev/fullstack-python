@@ -1,4 +1,4 @@
 .idea
 .venv
 __pycache__
-openrouter_key.py
+config/keys.py
