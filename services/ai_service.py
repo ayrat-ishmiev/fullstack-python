@@ -135,3 +135,31 @@ class AIService:
             max_tokens=4000
         )
         return response.choices[0].message.content.strip()
+
+    @classmethod
+    def generate_study_note(cls, topic, subject_context=""):
+        """Генерация конспекта с нуля по теме."""
+        client = cls.get_client()
+
+        prompt = f"""Напиши подробный учебный конспект на тему: "{topic}".
+            Предмет: {subject_context}.
+
+            СТРУКТУРА КОНСПЕКТА (Markdown):
+            1. # {topic} (Заголовок)
+            2. ## Введение (Краткая суть)
+            3. ## Основные понятия (Термины и определения)
+            4. ## Подробный разбор (Тезисы, формулы, примеры)
+            5. ## Заключение / Выводы
+
+            ТРЕБОВАНИЯ:
+            - Язык: Русский.
+            - ВЕРНИ ЧИСТЫЙ ТЕКСТ. НЕ оборачивай ответ в тройные кавычки (```markdown).
+            - Используй жирный шрифт для важных терминов.
+            - Используй списки для перечислений.
+            - Стиль: Академический, но понятный."""
+
+        response = client.chat.completions.create(
+            model="google/gemini-2.5-flash",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()

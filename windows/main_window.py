@@ -10,6 +10,8 @@ from windows.dialogs.search_results import SearchResultsWindow
 from windows.widgets.notes_list import NotesListWindow
 from windows.widgets.all_notes import AllNotesTableWindow
 from services.ai_service import AIService
+from windows.dialogs.add_note_choice import AddNoteChoiceDialog
+from windows.dialogs.generate_note import GenerateNoteDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -161,12 +163,39 @@ class MainWindow(QMainWindow):
     def add_note(self):
         item = self.list_widget.currentItem()
         if not item: return
-        subj = item.text()
-        
-        dlg = ImportNoteDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            if dlg.file_path: # Ensure file was selected
-                self.data_manager.add_note(subj, dlg.get_note_name(), dlg.get_note_content())
+        subj_name = item.text()
+
+        # 1. Спрашиваем пользователя: Файл или ИИ?
+        choice_dlg = AddNoteChoiceDialog(self)
+        if choice_dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # 2. Логика в зависимости от выбора
+        if choice_dlg.choice == 'file':
+            # СТАРЫЙ СПОСОБ (Импорт файла)
+            dlg = ImportNoteDialog(self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                if dlg.file_path:
+                    # Проверяем уникальность имени
+                    if self.data_manager.add_note(subj_name, dlg.get_note_name(), dlg.get_note_content()):
+                        QMessageBox.information(self, "Успех", f"Конспект добавлен в {subj_name}!")
+                    else:
+                        QMessageBox.warning(self, "Ошибка", "Конспект с таким именем уже существует.")
+
+        elif choice_dlg.choice == 'ai':
+            # НОВЫЙ СПОСОБ (Генерация)
+            gen_dlg = GenerateNoteDialog(subj_name, self)
+            if gen_dlg.exec() == QDialog.DialogCode.Accepted:
+                name = gen_dlg.get_note_name()
+                content = gen_dlg.get_note_content()
+
+                # Пометка, что это AI конспект
+                name = f"{name} (AI)"
+
+                if self.data_manager.add_note(subj_name, name, content):
+                    QMessageBox.information(self, "Успех", f"Сгенерированный конспект добавлен!")
+                else:
+                    QMessageBox.warning(self, "Ошибка", "Конспект с таким именем уже существует.")
 
     def show_all_notes(self):
         self.all_notes_win = AllNotesTableWindow(self.data_manager, self)

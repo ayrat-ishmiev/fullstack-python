@@ -4,6 +4,8 @@ from ui.notes_list_ui import Ui_Form
 from windows.dialogs.import_note import ImportNoteDialog
 from windows.dialogs.ask_ai import AskAIDialog
 from core.utils import render_markdown  # <--- Импорт новой функции
+from windows.dialogs.add_note_choice import AddNoteChoiceDialog  # <--- Новый
+from windows.dialogs.generate_note import GenerateNoteDialog    # <--- Новый
 
 class NotesListWindow(QWidget):
     def __init__(self, subject_name, data_manager, parent=None):
@@ -112,15 +114,40 @@ class NotesListWindow(QWidget):
             self.toggle_buttons(True)
 
     def add_note(self):
-        dlg = ImportNoteDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            name = dlg.get_note_name()
-            content = dlg.get_note_content()
-            if self.data_manager.add_note(self.subject_name, name, content):
-                self.load_notes()
-                QMessageBox.information(self, "OK", "Добавлено")
+        # 1. Спрашиваем пользователя: Файл или ИИ?
+        choice_dlg = AddNoteChoiceDialog(self)
+        if choice_dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        name = ""
+        content = ""
+
+        # 2. Ветка: Импорт файла
+        if choice_dlg.choice == 'file':
+            dlg = ImportNoteDialog(self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                if dlg.file_path:
+                    name = dlg.get_note_name()
+                    content = dlg.get_note_content()
+                else:
+                    return
+
+        # 3. Ветка: Генерация ИИ
+        elif choice_dlg.choice == 'ai':
+            gen_dlg = GenerateNoteDialog(self.subject_name, self)
+            if gen_dlg.exec() == QDialog.DialogCode.Accepted:
+                name = gen_dlg.get_note_name() + " (AI)"  # Добавляем пометку
+                content = gen_dlg.get_note_content()
             else:
-                QMessageBox.warning(self, "Ошибка", "Не удалось добавить (возможно, имя занято)")
+                return
+
+        # 4. Сохранение в базу (общая часть)
+        if name and content:
+            if self.data_manager.add_note(self.subject_name, name, content):
+                self.load_notes()  # Обновляем список на экране
+                QMessageBox.information(self, "Успех", "Конспект добавлен")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Конспект с таким именем уже существует.")
 
     def edit_note(self):
         if not self.current_note: return
