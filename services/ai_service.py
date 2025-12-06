@@ -7,13 +7,25 @@ from config.keys import OPENROUTER_KEY
 class AIService:
     _instance = None
     _client = None
+    _current_key = None
+
+    @classmethod
+    def set_api_key(cls, key):
+        """Устанавливает новый API ключ и сбрасывает клиент."""
+        if cls._current_key != key:
+            cls._current_key = key
+            cls._client = None  # Сброс клиента, чтобы он пересоздался с новым ключом
 
     @classmethod
     def get_client(cls):
+        """Возвращает клиент OpenAI. Если ключ не установлен, берет из config."""
         if cls._client is None:
+            # Если ключ не был установлен явно через set_api_key, берем из конфига
+            api_key = cls._current_key if cls._current_key else OPENROUTER_KEY
+
             cls._client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=OPENROUTER_KEY,
+                api_key=api_key,
             )
         return cls._client
 

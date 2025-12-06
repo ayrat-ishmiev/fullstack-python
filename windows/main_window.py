@@ -13,6 +13,8 @@ from services.ai_service import AIService
 from windows.dialogs.add_note_choice import AddNoteChoiceDialog
 from windows.dialogs.generate_note import GenerateNoteDialog
 from core.utils import resource_path, get_formatted_date # <--- Добавили get_formatted_date
+from config.keys import OPENROUTER_KEY
+from windows.dialogs.settings import SettingsDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -22,6 +24,7 @@ class MainWindow(QMainWindow):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.data_manager = DataManager()
+        self.apply_api_settings()
         self.notes_windows = {} # Cache for open windows
 
         # Background
@@ -31,6 +34,18 @@ class MainWindow(QMainWindow):
         # Build UI manually (as in original main.py logic for custom layout)
         self.setup_ui()
         self.load_subjects()
+
+    def apply_api_settings(self):
+        """Считывает настройки и передает нужный ключ в AIService."""
+        settings = self.data_manager.get_settings()
+        if settings.get("api_source") == "custom":
+            custom_key = settings.get("custom_key", "")
+            if custom_key:
+                AIService.set_api_key(custom_key)
+            else:
+                AIService.set_api_key(OPENROUTER_KEY)  # Fallback
+        else:
+            AIService.set_api_key(OPENROUTER_KEY)
 
     def setup_ui(self):
         self.central_widget = QWidget()
@@ -68,10 +83,13 @@ class MainWindow(QMainWindow):
         self.btn_all = QPushButton("📋 Все конспекты", self.central_widget)
         self.btn_all.clicked.connect(self.show_all_notes)
 
-        # Инструкция (setObjectName для стилизации кнопки, если есть в CSS)
+        # Кнопка Инструкция (оставляем)
         self.btn_info = QPushButton("Инструкция", self.central_widget)
-        self.btn_info.setObjectName("btn_instructions")
         self.btn_info.clicked.connect(self.show_instructions)
+
+        # Кнопка Настройки (НОВАЯ)
+        self.btn_settings = QPushButton("⚙ Настройки", self.central_widget)
+        self.btn_settings.clicked.connect(self.open_settings)
 
         # 4. Поиск
         self.search_input = QLineEdit(self.central_widget)
@@ -102,8 +120,11 @@ class MainWindow(QMainWindow):
         H = self.height()
         MARGIN = 20
 
-        # Инструкция (справа сверху)
-        self.btn_info.setGeometry(W - 140 - MARGIN, MARGIN, 140, 35)
+        # Инструкция (сдвигаем левее)
+        self.btn_info.setGeometry(W - 250 - MARGIN, MARGIN, 120, 35)
+
+        # Настройки (в самый правый угол)
+        self.btn_settings.setGeometry(W - 120 - MARGIN, MARGIN, 120, 35)
 
         # Левая колонка (Список)
         LIST_W = 370
@@ -279,6 +300,13 @@ class MainWindow(QMainWindow):
 
     def show_instructions(self):
         QMessageBox.information(self, "Инструкция", "1. Создайте предмет\n2. Добавьте конспект\n3. Используйте поиск!")
+
+    def open_settings(self):
+        dlg = SettingsDialog(self.data_manager, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            # Если нажали "Сохранить", применяем новый ключ немедленно
+            self.apply_api_settings()
+            QMessageBox.information(self, "Успех", "Настройки сохранены и применены.")
 
     def closeEvent(self, event):
         reply = QMessageBox.question(self, "Выход", "Выйти?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)

@@ -221,3 +221,18 @@ class DataManager:
                 return True, f"Импортировано {cnt} новых конспектов."
         except Exception as e:
             return False, str(e)
+
+    def get_settings(self):
+        """Возвращает словарь настроек. Если их нет, возвращает дефолтные."""
+        return self.data.get("settings", {
+            "api_source": "default",  # 'default' или 'custom'
+            "custom_key": ""
+        })
+
+    def save_settings(self, api_source, custom_key):
+        """Сохраняет настройки API ключа."""
+        self.data["settings"] = {
+            "api_source": api_source,
+            "custom_key": custom_key
+        }
+        return self.save_data()
