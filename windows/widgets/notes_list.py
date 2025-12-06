@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt
 from ui.notes_list_ui import Ui_Form
 from windows.dialogs.import_note import ImportNoteDialog
 from windows.dialogs.ask_ai import AskAIDialog
+from core.utils import render_markdown  # <--- Импорт новой функции
 
 class NotesListWindow(QWidget):
     def __init__(self, subject_name, data_manager, parent=None):
@@ -96,15 +97,18 @@ class NotesListWindow(QWidget):
             self.ui.listWidget.addItem(QListWidgetItem(n["name"]))
 
     def on_note_selected(self, item):
-        # Check unsaved changes logic here if needed
         self.ui.textBrowser.setReadOnly(True)
         self.current_note = item.text()
-        
+
         self.ui.label_3.setText(self.current_note)
         data = self.data_manager.get_note_data(self.subject_name, self.current_note)
         if data:
             self.ui.label_2.setText(data.get("created_date", ""))
-            self.ui.textBrowser.setText(data["content"])
+
+            # ИСПОЛЬЗУЕМ render_markdown ВМЕСТО setText
+            html_content = render_markdown(data["content"])
+            self.ui.textBrowser.setHtml(html_content)
+
             self.toggle_buttons(True)
 
     def add_note(self):
@@ -126,13 +130,40 @@ class NotesListWindow(QWidget):
         self.ui.pushButton_3.setEnabled(True)
 
     def save_note(self):
+        """Сохраняет измененный контент."""
         if not self.current_note: return
+
+        # Когда мы сохраняем, мы берем 'toPlainText', чтобы сохранить исходный Markdown,
+        # а не HTML-код, который сгенерировал просмотрщик.
+        # Однако, редактирование HTML в QTextBrowser в режиме Markdown сложно.
+        # Для простоты: если пользователь редактирует, он видит простой текст (Markdown),
+        # а когда сохраняет - он рендерится обратно в HTML.
+
         new_content = self.ui.textBrowser.toPlainText()
+
         if self.data_manager.update_note_content(self.subject_name, self.current_note, new_content):
             self.ui.textBrowser.setReadOnly(True)
+
+            # После сохранения рендерим обратно в красивый HTML
+            self.ui.textBrowser.setHtml(render_markdown(new_content))
+
             self.ui.pushButton_2.setEnabled(True)
             self.ui.pushButton_3.setEnabled(False)
             QMessageBox.information(self, "OK", "Сохранено")
+
+    def edit_note(self):
+        if not self.current_note: return
+
+        # При переходе в режим редактирования нужно показать исходный текст (Markdown),
+        # а не отрендеренный HTML, иначе пользователь сломает разметку.
+        data = self.data_manager.get_note_data(self.subject_name, self.current_note)
+        if data:
+            self.ui.textBrowser.setPlainText(data["content"])  # Показываем сырой MD
+
+        self.ui.textBrowser.setReadOnly(False)
+        self.ui.textBrowser.setFocus()
+        self.ui.pushButton_2.setEnabled(False)
+        self.ui.pushButton_3.setEnabled(True)
 
     def delete_note(self):
         if not self.current_note: return

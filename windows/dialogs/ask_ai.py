@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QLineEdi
 from PyQt6.QtCore import Qt
 from ui.ask_ai_dialog_ui import Ui_Form
 from services.ai_service import AIService
+from core.utils import render_markdown # <--- Импорт
 
 class AskAIDialog(QDialog): # Наследуем QDialog, а не QWidget, чтобы работал exec()
     def __init__(self, note_name, note_content, parent=None):
@@ -46,6 +47,8 @@ class AskAIDialog(QDialog): # Наследуем QDialog, а не QWidget, чт�
 
         self.pushButton.setEnabled(False)
         self.pushButton.setText("⏳ Думаю...")
+
+        # Показываем вопрос
         self.textBrowser.setHtml(f"<b>В: {q}</b><br><i>Ожидание ответа...</i>")
         QApplication.processEvents()
 
@@ -56,7 +59,18 @@ class AskAIDialog(QDialog): # Наследуем QDialog, а не QWidget, чт�
                 messages=[{"role": "user", "content": f"Context:\n{self.note_content}\n\nQuestion: {q}"}]
             )
             ans = resp.choices[0].message.content
-            self.textBrowser.setHtml(f"<b>В: {q}</b><br><br><b>О:</b><br>{ans.replace(chr(10), '<br>')}<hr>")
+
+            # Рендерим Markdown ответа
+            formatted_ans = render_markdown(ans)
+
+            # Собираем HTML для чата
+            final_html = f"""
+            <div style="color: #ccc; margin-bottom: 10px;"><b>Вопрос:</b> {q}</div>
+            <hr>
+            <div>{formatted_ans}</div>
+            """
+            self.textBrowser.setHtml(final_html)
+
         except Exception as e:
             self.textBrowser.setHtml(f"Ошибка: {e}")
         finally:
