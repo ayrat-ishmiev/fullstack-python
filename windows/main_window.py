@@ -12,6 +12,7 @@ from windows.widgets.all_notes import AllNotesTableWindow
 from services.ai_service import AIService
 from windows.dialogs.add_note_choice import AddNoteChoiceDialog
 from windows.dialogs.generate_note import GenerateNoteDialog
+from core.utils import resource_path, get_formatted_date # <--- Добавили get_formatted_date
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -47,7 +48,7 @@ class MainWindow(QMainWindow):
         self.lbl_date = QLabel(self.central_widget)
         self.lbl_date.setObjectName("date_label")  # ID для CSS
         self.lbl_date.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-        self.lbl_date.setText(QDate.currentDate().toString("dd MMMM yyyy"))
+        self.lbl_date.setText(get_formatted_date())
 
         # 2. Список
         self.list_widget = QListWidget(self.central_widget)

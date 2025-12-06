@@ -1,6 +1,7 @@
 import sys
 import os
 import markdown
+from datetime import datetime
 
 def resource_path(relative_path):
     """Получает абсолютный путь к ресурсу."""
@@ -9,6 +10,27 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+
+def get_formatted_date():
+    """
+    Возвращает текущую дату в формате: 'Суббота, 6 декабря 2025'.
+    Использует словари для гарантии правильного падежа и регистра.
+    """
+    now = datetime.now()
+
+    days = {
+        0: "Понедельник", 1: "Вторник", 2: "Среда", 3: "Четверг",
+        4: "Пятница", 5: "Суббота", 6: "Воскресенье"
+    }
+
+    months = {
+        1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
+        7: "июля", 8: "августа", 9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+    }
+
+    # Формируем строку
+    return f"{days[now.weekday()]}, {now.day} {months[now.month]} {now.year}"
 
 def render_markdown(text):
     """
