@@ -92,24 +92,31 @@ class AIService:
             else:
                 raise ValueError(f"Это не аудиофайл: {audio_path}")
 
-        # ОБНОВЛЕННЫЙ ПРОМПТ ДЛЯ АУДИО
-        prompt = """Ты — автоматический транскрибатор. Твоя задача — вернуть только конспект.
+        # Упрощенный промпт, чтобы модель сфокусировалась на аудио
+        prompt = """Прослушай прикрепленный аудиофайл и сделай подробный конспект.
 
-        СТРОГИЕ ПРАВИЛА ВЫВОДА:
-        1. ЗАПРЕЩЕНО писать вводные слова (например: 'Вот конспект', 'Конечно').
-        2. ПЕРВАЯ СТРОКА ответа должна быть заголовком: '# Тема лекции'.
-        3. Используй Markdown для форматирования.
-        4. Язык: Русский."""
+            Требования:
+            1. Результат должен быть на Русском языке.
+            2. Формат: Markdown.
+            3. Первая строка должна быть темой аудиозаписи в виде заголовка первого уровня #.
+            4. Не пиши вводных фраз типа 'Вот транскрипция', сразу пиши текст конспекта.
+            """
 
-        alt_payload = [
+        # Формируем payload специфично для OpenRouter + Gemini Audio
+        payload = [
             {"type": "text", "text": prompt},
-            {"type": "audio_url", "audio_url": {"url": f"data:{mime_type};base64,{base64_audio}"}}
+            {
+                "type": "video_url",
+                "video_url": {
+                    "url": f"data:{mime_type};base64,{base64_audio}"
+                }
+            }
         ]
 
         response = client.chat.completions.create(
             model="google/gemini-2.5-flash",
-            messages=[{"role": "user", "content": alt_payload}],
-            max_tokens=4000
+            messages=[{"role": "user", "content": payload}],
+            max_tokens=8000  # Увеличиваем лимит токенов для длинных аудио
         )
         return response.choices[0].message.content.strip()
 

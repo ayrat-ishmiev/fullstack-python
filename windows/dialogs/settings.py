@@ -40,12 +40,6 @@ class SettingsDialog(QDialog):
         self.key_input.setEchoMode(QLineEdit.EchoMode.Password)  # Скрываем символы
         group_layout.addWidget(self.key_input)
 
-        # Подсказка
-        hint = QLabel("Свой ключ позволяет избежать общих лимитов и очередей.")
-        hint.setStyleSheet("color: #888; font-size: 12px;")
-        hint.setWordWrap(True)
-        group_layout.addWidget(hint)
-
         group.setLayout(group_layout)
         layout.addWidget(group)
 
