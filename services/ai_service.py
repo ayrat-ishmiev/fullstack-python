@@ -116,7 +116,7 @@ class AIService:
         response = client.chat.completions.create(
             model="google/gemini-2.5-flash",
             messages=[{"role": "user", "content": payload}],
-            max_tokens=8000  # Увеличиваем лимит токенов для длинных аудио
+            max_tokens=100000  # Увеличиваем лимит токенов для длинных аудио
         )
         return response.choices[0].message.content.strip()
 
@@ -151,7 +151,7 @@ class AIService:
         response = client.chat.completions.create(
             model="google/gemini-2.5-flash",
             messages=[{"role": "user", "content": payload}],
-            max_tokens=4000
+            max_tokens=100000
         )
         return response.choices[0].message.content.strip()
 
