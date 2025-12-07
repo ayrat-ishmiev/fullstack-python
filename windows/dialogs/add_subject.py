@@ -45,6 +45,13 @@ class AddSubjectDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
 
+    def keyPressEvent(self, event):
+        """Обработка нажатия Esc с проверкой изменений."""
+        if event.key() == Qt.Key.Key_Escape:
+            self.cancel()  # Используем метод cancel, который спрашивает подтверждение
+        else:
+            super().keyPressEvent(event)
+
     def cancel(self):
         if self.has_unsaved_changes:
             reply = QMessageBox.question(self, "Подтверждение", "Несохраненные изменения. Закрыть?", 

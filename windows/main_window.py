@@ -308,6 +308,15 @@ class MainWindow(QMainWindow):
             self.apply_api_settings()
             QMessageBox.information(self, "Успех", "Настройки сохранены и применены.")
 
+    def keyPressEvent(self, event):
+        """Обработка нажатия клавиш клавиатуры."""
+        if event.key() == Qt.Key.Key_Escape:
+            # Вызываем close(), который в свою очередь вызовет closeEvent
+            # с диалогом подтверждения
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
     def closeEvent(self, event):
         reply = QMessageBox.question(self, "Выход", "Выйти?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:

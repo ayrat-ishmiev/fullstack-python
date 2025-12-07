@@ -155,3 +155,29 @@ class ImportNoteDialog(QDialog):
     def _hide_progress(self):
         if self.progress_timer: self.progress_timer.stop()
         if self.progress_dialog: self.progress_dialog.close()
+
+    def keyPressEvent(self, event):
+        """Обработка Esc при импорте."""
+        if event.key() == Qt.Key.Key_Escape:
+            self.check_and_close()
+        else:
+            super().keyPressEvent(event)
+
+    def reject(self):
+        """Переопределяем стандартный метод закрытия (крестик или Cancel)."""
+        self.check_and_close()
+
+    def check_and_close(self):
+        """Проверяет, выбран ли файл перед закрытием."""
+        # Если файл выбран или есть сгенерированный контент
+        if self.file_path or self.note_content:
+            reply = QMessageBox.question(
+                self,
+                "Отмена",
+                "Выбраны файлы или есть данные. Прервать добавление?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                super().reject()  # Вызов оригинального метода закрытия QDialog
+        else:
+            super().reject()

@@ -213,3 +213,10 @@ class NotesListWindow(QWidget):
         if items:
             self.ui.listWidget.setCurrentItem(items[0])
             self.on_note_selected(items[0])
+
+    def keyPressEvent(self, event):
+        """Закрытие окна конспектов по нажатию Esc."""
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)
