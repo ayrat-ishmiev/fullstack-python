@@ -136,7 +136,7 @@ class NotesListWindow(QWidget):
         elif choice_dlg.choice == 'ai':
             gen_dlg = GenerateNoteDialog(self.subject_name, self)
             if gen_dlg.exec() == QDialog.DialogCode.Accepted:
-                name = gen_dlg.get_note_name() + " (AI)"  # Добавляем пометку
+                name = f'✨ {gen_dlg.get_note_name()}'  # Добавляем пометку
                 content = gen_dlg.get_note_content()
             else:
                 return

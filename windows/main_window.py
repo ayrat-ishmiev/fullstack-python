@@ -212,7 +212,7 @@ class MainWindow(QMainWindow):
                 content = gen_dlg.get_note_content()
 
                 # Пометка, что это AI конспект
-                name = f"{name} (AI)"
+                name = f"✨ {name}"
 
                 if self.data_manager.add_note(subj_name, name, content):
                     QMessageBox.information(self, "Успех", f"Сгенерированный конспект добавлен!")

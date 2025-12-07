@@ -22,14 +22,14 @@ class ImportNoteDialog(QDialog):
         self.dots = 0
 
         self.ui.pushButton_Add.setEnabled(False)
-        self.ui.label.setText("Поддерживается: TXT, PDF, JPG, PNG, MP3, MP4")
+        self.ui.label.setText("Поддерживается: TXT, PDF, изображения, аудио, видео")
 
         self.ui.pushButton.clicked.connect(self.select_file)
         self.ui.pushButton_Add.clicked.connect(self.process_and_accept)
         self.ui.pushButton_Cancel.clicked.connect(self.reject)
 
     def select_file(self):
-        filters = "Все форматы (*.txt *.pdf *.jpg *.jpeg *.png *.webp *.mp3 *.wav *.ogg *.m4a *.mp4 *.avi *.mov *.webm *.mkv);;Текст (*.txt *.pdf);;Изображения (*.jpg *.png);;Аудио (*.mp3 *.wav);;Видео (*.mp4 *.mov)"
+        filters = "Все форматы (*.txt *.md *.pdf *.jpg *.jpeg *.png *.webp *.mp3 *.wav *.ogg *.m4a *.aac *.amr *.mp4 *.avi *.mov *.webm *.mkv);;Текст (*.txt *.md *.pdf);;Изображения (*.jpg *.jpeg *.png *.webp);;Аудио (*.mp3 *.wav *.ogg *.m4a *.aac *.amr);;Видео (*.mp4 *.mov *.avi *.webm *.mkv)"
         path, _ = QFileDialog.getOpenFileName(self, "Выберите файл", "", filters)
 
         if path:
@@ -39,9 +39,10 @@ class ImportNoteDialog(QDialog):
             size_mb = os.path.getsize(path) / (1024 * 1024)
             type_rus = {
                 'text': 'Текстовый документ',
-                'image': 'Изображение (OCR)',
-                'audio': 'Аудио (Speech-to-Text)',
-                'video': 'Видео (Мультимодальный анализ)',
+                'pdf': 'Документ PDF',
+                'image': 'Изображение',
+                'audio': 'Аудио',
+                'video': 'Видео',
                 'unknown': 'Неизвестный формат'
             }.get(self.file_type, 'Файл')
 
@@ -56,9 +57,10 @@ class ImportNoteDialog(QDialog):
 
     def _detect_type(self, path):
         ext = os.path.splitext(path)[1].lower()
-        if ext in ['.txt', '.pdf']: return 'text'
+        if ext in ['.txt', '.md']: return 'text'
+        if ext in ['.pdf']: return 'pdf'
         if ext in ['.jpg', '.jpeg', '.png', '.webp']: return 'image'
-        if ext in ['.mp3', '.wav', '.ogg', '.m4a']: return 'audio'
+        if ext in ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.amr']: return 'audio'
         if ext in ['.mp4', '.avi', '.mov', '.webm', '.mkv']: return 'video'
         return 'unknown'
 
@@ -68,7 +70,7 @@ class ImportNoteDialog(QDialog):
         try:
             if self.file_type == 'text':
                 self._read_text_file()
-            elif self.file_type in ['image', 'audio', 'video']:
+            elif self.file_type in ['image', 'audio', 'video', 'pdf']:
                 self._process_media_with_ai()
             else:
                 self.note_title = os.path.basename(self.file_path)
@@ -93,7 +95,8 @@ class ImportNoteDialog(QDialog):
         op_map = {
             'image': ('Распознавание текста', AIService.recognize_image),
             'audio': ('Транскрибация аудио', AIService.transcribe_audio),
-            'video': ('Анализ видеоурока', AIService.transcribe_video)
+            'video': ('Анализ видеоурока', AIService.transcribe_video),
+            'pdf': ('Обработка PDF', AIService.analyze_pdf)
         }
 
         op_name, ai_method = op_map[self.file_type]

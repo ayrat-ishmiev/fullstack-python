@@ -42,6 +42,7 @@ class AIService:
         if ext in ['.wav']: return 'audio/wav'
         if ext in ['.ogg']: return 'audio/ogg'
         if ext in ['.m4a', '.aac']: return 'audio/mp4'
+        if ext in ['.amr']: return 'audio/amr'
         # Видео
         if ext in ['.mp4']: return 'video/mp4'
         if ext in ['.avi']: return 'video/x-msvideo'
@@ -52,6 +53,8 @@ class AIService:
         if ext in ['.jpg', '.jpeg']: return 'image/jpeg'
         if ext in ['.png']: return 'image/png'
         if ext in ['.webp']: return 'image/webp'
+        # PDF
+        if ext in ['.pdf']: return 'application/pdf'
         return None
 
     @classmethod
@@ -74,6 +77,36 @@ class AIService:
                     "content": [
                         {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
+                    ]
+                }
+            ]
+        )
+        return response.choices[0].message.content.strip()
+
+    @classmethod
+    def analyze_pdf(cls, pdf_path):
+        client = cls.get_client()
+        base64_pdf = cls._encode_file(pdf_path)
+        mime_type = "application/pdf"
+
+        prompt = """Проанализируй этот PDF документ (включая текст, графики и сканы).
+
+                ТРЕБОВАНИЯ:
+                1. Составь подробный конспект на Русском языке.
+                2. Формат: Markdown.
+                3. Первая строка: '# Название документа'.
+                4. Если текст в документе рукописный или это скан - распознай его.
+                5. Игнорируй колонтитулы и номера страниц.
+                """
+
+        response = client.chat.completions.create(
+            model="google/gemini-2.5-flash",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_pdf}"}}
                     ]
                 }
             ]
