@@ -1,7 +1,9 @@
 from PyQt6.QtWidgets import QDialog, QMessageBox
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QCloseEvent  # Импортируем для аннотации (необязательно)
 from ui.add_subject_dialog_ui import Ui_Dialog
 from core.exceptions import SubjectValidationError
+
 
 class AddSubjectDialog(QDialog):
     def __init__(self, parent=None):
@@ -32,7 +34,7 @@ class AddSubjectDialog(QDialog):
                 raise SubjectValidationError("Минимум 2 символа")
             if len(subject_name) > 50:
                 raise SubjectValidationError("Максимум 50 символов")
-            
+
             forbidden = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
             if any(char in subject_name for char in forbidden):
                 raise SubjectValidationError("Содержит запрещенные символы")
@@ -48,15 +50,24 @@ class AddSubjectDialog(QDialog):
     def keyPressEvent(self, event):
         """Обработка нажатия Esc с проверкой изменений."""
         if event.key() == Qt.Key.Key_Escape:
-            self.cancel()  # Используем метод cancel, который спрашивает подтверждение
+            # Вызываем закрытие, которое теперь обрабатывается в closeEvent
+            self.close()
         else:
             super().keyPressEvent(event)
 
-    def cancel(self):
+    def closeEvent(self, event):
+        """Обработка закрытия окна (включая крестик)."""
         if self.has_unsaved_changes:
-            reply = QMessageBox.question(self, "Подтверждение", "Несохраненные изменения. Закрыть?", 
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            reply = QMessageBox.question(self, "Подтверждение", "Несохраненные изменения. Закрыть?",
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
-                self.reject()
+                event.accept()  # Закрыть окно
+            else:
+                event.ignore()  # Отменить закрытие
         else:
-            self.reject()
+            event.accept()
+
+    def cancel(self):
+        # Теперь метод просто вызывает стандартный close(),
+        # который перехватывается в closeEvent
+        self.close()
