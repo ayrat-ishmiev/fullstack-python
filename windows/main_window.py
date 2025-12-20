@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QLabel, QListWidget, QPushButton, QLineEdit, QMessageBox, QMenu, QListWidgetItem, QProgressDialog, QDialog
-from PyQt6.QtCore import Qt, QDate, QTimer
+from PyQt6.QtCore import Qt, QDate, QTimer, QThread, pyqtSignal
 from PyQt6 import QtGui
 
 from core.utils import resource_path
@@ -54,6 +54,7 @@ class MainWindow(QMainWindow):
 
         # 1. Заголовки (Важно: setObjectName должен совпадать с CSS в styles.py)
         self.lbl_subjects = QLabel("Список предметов", self.central_widget)
+        self.lbl_subjects.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_subjects.setObjectName("subject_title_label")  # ID для CSS
 
         self.lbl_welcome = QLabel("Добро пожаловать!", self.central_widget)
@@ -112,61 +113,73 @@ class MainWindow(QMainWindow):
         super().paintEvent(event)
 
     def resizeEvent(self, event):
-        """
-        Полная логика позиционирования из оригинального main.py.
-        Восстанавливает расположение элементов.
-        """
         W = self.width()
         H = self.height()
         MARGIN = 20
 
-        # Инструкция (сдвигаем левее)
+        # --- Верхние кнопки ---
         self.btn_info.setGeometry(W - 250 - MARGIN, MARGIN, 120, 35)
-
-        # Настройки (в самый правый угол)
         self.btn_settings.setGeometry(W - 120 - MARGIN, MARGIN, 120, 35)
 
-        # Левая колонка (Список)
+        # --- Левая колонка (Список) ---
         LIST_W = 370
         LIST_TOP = 60
         LIST_BOTTOM_MARGIN = 120
-
         self.lbl_subjects.setGeometry(MARGIN, MARGIN, LIST_W, 30)
         self.list_widget.setGeometry(MARGIN, LIST_TOP, LIST_W, H - LIST_TOP - LIST_BOTTOM_MARGIN)
 
-        # Правая часть (Приветствие и Дата)
-        # Центрируем относительно правой свободной области
-        CENTER_Y = H // 2 - 80
-        WELCOME_W = 500
-        WELCOME_H = 60
-        DATE_H = 70
+        # --- РАСЧЕТ ПРАВОЙ ОБЛАСТИ ---
+        RIGHT_AREA_START = MARGIN + LIST_W + 40
+        RIGHT_AREA_WIDTH = W - RIGHT_AREA_START - MARGIN
+
+        # Адаптивная ширина блоков (80% от свободной зоны)
+        ADAPTIVE_W = min(int(RIGHT_AREA_WIDTH * 0.8), 600)
+        CENTER_X = RIGHT_AREA_START + (RIGHT_AREA_WIDTH - ADAPTIVE_W) // 2
+
+        # --- ДИНАМИЧЕСКИЙ РАЗМЕР ШРИФТА (без потери стиля) ---
+        # Рассчитываем размер на основе высоты окна
+        size_welcome = max(24, int(H / 20))  # Исходный размер ~24-28
+        size_date = max(14, int(H / 35))
+
+        # Применяем размер шрифта, не трогая CSS (цвета, тени и т.д. остаются из styles.py)
+        font_w = self.lbl_welcome.font()
+        font_w.setPointSize(size_welcome)
+        self.lbl_welcome.setFont(font_w)
+
+        font_d = self.lbl_date.font()
+        font_d.setPointSize(size_date)
+        self.lbl_date.setFont(font_d)
+
+        # --- ПОЗИЦИОНИРОВАНИЕ ---
+        WELCOME_H = int(H * 0.1)
+        DATE_H = int(H * 0.08)
+        SEARCH_H = 45
+
+        TOTAL_H = WELCOME_H + DATE_H + 30 + SEARCH_H
+        START_Y = (H // 2) - (TOTAL_H // 2)
 
         # Приветствие
-        self.lbl_welcome.setGeometry(W - WELCOME_W - MARGIN - 20, CENTER_Y, WELCOME_W, WELCOME_H)
+        self.lbl_welcome.setGeometry(CENTER_X, START_Y, ADAPTIVE_W, WELCOME_H)
+        self.lbl_welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Дата
-        DATE_Y = CENTER_Y + WELCOME_H + 5
-        self.lbl_date.setGeometry(W - WELCOME_W - MARGIN - 20, DATE_Y, WELCOME_W, DATE_H)
+        DATE_Y = START_Y + WELCOME_H + 5
+        self.lbl_date.setGeometry(CENTER_X, DATE_Y, ADAPTIVE_W, DATE_H)
+        self.lbl_date.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Поиск (Под датой)
-        SEARCH_Y = DATE_Y + DATE_H + 30
-        SEARCH_W = 400
-        BTN_SEARCH_W = 50
-        SEARCH_X = W - SEARCH_W - MARGIN - 20
+        # Поиск
+        SEARCH_Y = DATE_Y + DATE_H + 25
+        BTN_W = 50
+        self.search_input.setGeometry(CENTER_X, SEARCH_Y, ADAPTIVE_W - BTN_W - 5, SEARCH_H)
+        self.btn_search.setGeometry(CENTER_X + ADAPTIVE_W - BTN_W, SEARCH_Y, BTN_W, SEARCH_H)
 
-        self.search_input.setGeometry(SEARCH_X, SEARCH_Y, SEARCH_W - BTN_SEARCH_W - 5, 40)
-        self.btn_search.setGeometry(SEARCH_X + SEARCH_W - BTN_SEARCH_W, SEARCH_Y, BTN_SEARCH_W, 40)
-
-        # Кнопки слева внизу
+        # --- Кнопки слева внизу ---
         BTN_H = 40
         BTN_Y_1 = H - LIST_BOTTOM_MARGIN + 10
         BTN_Y_2 = BTN_Y_1 + BTN_H + 10
-
         HALF_W = (LIST_W - 10) // 2
         self.btn_add_note.setGeometry(MARGIN, BTN_Y_1, HALF_W, BTN_H)
         self.btn_all.setGeometry(MARGIN + HALF_W + 10, BTN_Y_1, HALF_W, BTN_H)
-
-        # Большая кнопка "Добавить предмет" в самом низу
         self.btn_add_subject.setGeometry(MARGIN, BTN_Y_2, LIST_W, BTN_H)
 
         super().resizeEvent(event)
@@ -228,11 +241,31 @@ class MainWindow(QMainWindow):
     def smart_search(self):
         q = self.search_input.text().strip()
         if not q: return
-        
-        pd = QProgressDialog(f"Ищу: {q}", "Отмена", 0, 0, self)
-        pd.setWindowModality(Qt.WindowModality.WindowModal)
-        pd.show()
-        QTimer.singleShot(100, lambda: self._execute_search(q, pd))
+
+        self.pd = QProgressDialog(f"Ищу: {q}", "Отмена", 0, 0, self)
+        self.pd.setWindowModality(Qt.WindowModality.WindowModal)
+
+        # Создаем поток
+        self.search_thread = SearchWorker(q, self.data_manager)
+
+        # Связываем сигналы
+        self.search_thread.finished.connect(self._on_search_finished)
+        self.search_thread.error.connect(self._on_search_error)
+
+        # Если нажали отмену — прерываем поток (грубо, но для поиска допустимо)
+        self.pd.canceled.connect(self.search_thread.terminate)
+
+        self.pd.show()
+        self.search_thread.start()
+
+    def _on_search_finished(self, results):
+        self.pd.close()
+        q = self.search_input.text().strip()
+        SearchResultsWindow(q, results, self.data_manager, self, self).exec()
+
+    def _on_search_error(self, error_msg):
+        self.pd.close()
+        QMessageBox.critical(self, "Ошибка поиска", error_msg)
 
     def _execute_search(self, q, pd):
         try:
@@ -324,3 +357,18 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+class SearchWorker(QThread):
+    finished = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, query, data_manager):
+        super().__init__()
+        self.query = query
+        self.data_manager = data_manager
+
+    def run(self):
+        try:
+            results = self.data_manager.smart_search(self.query, AIService.get_client())
+            self.finished.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
