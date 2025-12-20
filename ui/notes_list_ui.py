@@ -17,7 +17,7 @@ class Ui_Form(object):
         self.listWidget.setGeometry(QtCore.QRect(10, 40, 161, 361))
         self.listWidget.setObjectName("listWidget")
         self.label = QtWidgets.QLabel(parent=Form)
-        self.label.setGeometry(QtCore.QRect(40, 10, 111, 21))
+        self.label.setGeometry(QtCore.QRect(110, 10, 111, 21))
         self.label.setObjectName("label")
         self.pushButton = QtWidgets.QPushButton(parent=Form)
         self.pushButton.setGeometry(QtCore.QRect(20, 410, 141, 31))
